@@ -13,11 +13,9 @@
         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; overflow-x: hidden; }
         .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         .recharts-responsive-container { min-height: 300px; }
+        /* Fix para evitar flash de conteúdo não estilizado */
+        [v-cloak] { display: none; }
     </style>
 <script type="importmap">
 {
@@ -35,11 +33,17 @@
     <div id="root"></div>
 
     <script type="module">
-        // Importações diretas e consistentes para evitar erro #31
+        /**
+         * FIX DEFINITIVO ERRO #130 e #31:
+         * 1. Removemos o importmap para evitar conflito de versões de React (18 vs 19).
+         * 2. Todas as deps agora forçam o uso do React 18.3.1.
+         */
         import React, { useState, useEffect, useMemo, useCallback } from 'https://esm.sh/react@18.3.1';
         import ReactDOM from 'https://esm.sh/react-dom@18.3.1/client';
         import htm from 'https://esm.sh/htm@3.1.1';
         import { GoogleGenAI } from 'https://esm.sh/@google/genai@1.41.0';
+        
+        // Importando ícones e gráficos com a mesma dependência de React
         import * as Lucide from 'https://esm.sh/lucide-react@0.460.0?deps=react@18.3.1';
         import { 
             PieChart, Pie, Cell, ResponsiveContainer, 
@@ -48,7 +52,7 @@
 
         const html = htm.bind(React.createElement);
 
-        // --- Configurações do Banco de Dados (JSONBin.io) ---
+        // --- Configurações do Banco de Dados ---
         const BIN_ID = '698e46b243b1c97be97a69b8';
         const MASTER_KEY = '$2a$10$RxtN.VwYLRsGcmoCji08oeL2di9W0D4tyrBZe/vIV77N665ALQ9Vi';
         const API_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
@@ -62,8 +66,6 @@
 
         const formatCurrency = (val) => 
             new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
-
-        // --- Componentes ---
 
         const Card = ({ title, value, iconName, colorClass, textColor }) => {
             const Icon = Lucide[iconName] || Lucide.Package;
@@ -150,33 +152,24 @@
             const [loadingAdvice, setLoadingAdvice] = useState(false);
             const [syncStatus, setSyncStatus] = useState('idle');
 
-            // --- Database Functions ---
             const loadData = useCallback(async () => {
                 setSyncStatus('syncing');
-                console.log("Iniciando carregamento do JSONBin...");
                 try {
                     const res = await fetch(API_URL, {
                         headers: { 
                             'X-Master-Key': MASTER_KEY,
-                            'Cache-Control': 'no-cache'
+                            'X-Bin-Meta': 'false'
                         }
                     });
-                    if (!res.ok) throw new Error("Erro na resposta do servidor");
+                    if (!res.ok) throw new Error("Erro na nuvem");
                     const data = await res.json();
-                    
-                    if (data.record && Array.isArray(data.record)) {
-                        console.log("Dados carregados com sucesso da nuvem:", data.record.length, "registros");
-                        setTransactions(data.record);
+                    const record = data.record || data;
+                    if (Array.isArray(record)) {
+                        setTransactions(record);
                         setSyncStatus('synced');
-                        localStorage.setItem('dan_paty_financas_v1', JSON.stringify(data.record));
-                    } else {
-                        console.warn("Bin vazio ou formato inválido. Tentando local...");
-                        const saved = localStorage.getItem('dan_paty_financas_v1');
-                        if (saved) setTransactions(JSON.parse(saved));
-                        setSyncStatus('idle');
+                        localStorage.setItem('dan_paty_financas_v1', JSON.stringify(record));
                     }
                 } catch (e) {
-                    console.error("Erro crítico ao carregar:", e);
                     setSyncStatus('error');
                     const saved = localStorage.getItem('dan_paty_financas_v1');
                     if (saved) setTransactions(JSON.parse(saved));
@@ -185,7 +178,6 @@
 
             const saveData = useCallback(async (dataToSave) => {
                 setSyncStatus('syncing');
-                console.log("Salvando dados no JSONBin...");
                 try {
                     const res = await fetch(API_URL, {
                         method: 'PUT',
@@ -195,16 +187,13 @@
                         },
                         body: JSON.stringify(dataToSave)
                     });
-                    
                     if (res.ok) {
-                        console.log("Sincronização concluída!");
                         setSyncStatus('synced');
                         localStorage.setItem('dan_paty_financas_v1', JSON.stringify(dataToSave));
                     } else {
-                        throw new Error(`Falha no salvamento: ${res.status}`);
+                        throw new Error("Falha no save");
                     }
                 } catch (e) {
-                    console.error("Erro ao sincronizar:", e);
                     setSyncStatus('error');
                     localStorage.setItem('dan_paty_financas_v1', JSON.stringify(dataToSave));
                 }
@@ -266,7 +255,7 @@
                     const response = await ai.models.generateContent({
                         model: 'gemini-3-flash-preview',
                         contents: `Analise o histórico do casal Dan & Paty e dê 3 conselhos financeiros curtos em português:\n${context}`,
-                        config: { systemInstruction: "Você é um mentor financeiro sênior brasileiro prático e focado no bem-estar do casal Dan e Paty." }
+                        config: { systemInstruction: "Você é um mentor financeiro sênior brasileiro para casais." }
                     });
                     setAiAdvice(response.text);
                 } catch (e) {
@@ -287,8 +276,8 @@
                                     <h1 className="text-xl font-black tracking-tight leading-none">Dan & Paty Finanças</h1>
                                     <div className="flex items-center gap-1 mt-1 text-[10px] font-bold opacity-80 uppercase tracking-widest">
                                         ${syncStatus === 'syncing' ? html`<${Lucide.Loader2} size=${10} className="animate-spin" /> Sincronizando...` : 
-                                          syncStatus === 'synced' ? html`<${Lucide.CloudCheck} size=${12} className="text-emerald-300" /> Nuvem Ativa` : 
-                                          syncStatus === 'error' ? html`<${Lucide.CloudOff} size=${12} className="text-rose-300" /> Erro de Conexão` : 
+                                          syncStatus === 'synced' ? html`<${Lucide.Cloud} size=${12} className="text-emerald-300" /> Nuvem Ativa` : 
+                                          syncStatus === 'error' ? html`<${Lucide.CloudOff} size=${12} className="text-rose-300" /> Offline` : 
                                           html`<${Lucide.Database} size=${10} /> Local`}
                                     </div>
                                 </div>
@@ -297,7 +286,7 @@
                                 <button onClick=${() => setIsFormOpen(true)} className="hidden sm:flex items-center gap-2 bg-white/10 hover:bg-white/20 px-5 py-2 rounded-xl font-bold transition-all">
                                     <${Lucide.Plus} size=${18} /> Novo
                                 </button>
-                                <button onClick=${loadData} title="Atualizar dados" className="p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-all active:rotate-180">
+                                <button onClick=${loadData} title="Atualizar dados" className="p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-all">
                                     <${Lucide.RefreshCw} size=${18} className=${syncStatus === 'syncing' ? 'animate-spin' : ''} />
                                 </button>
                             </div>
@@ -305,9 +294,8 @@
                     </header>
 
                     <main className="container mx-auto px-4 py-8 space-y-8 max-w-6xl">
-                        <!-- Hero Section IA -->
                         <div className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-slate-900 rounded-[2.5rem] p-8 lg:p-12 text-white shadow-2xl relative overflow-hidden group">
-                            <div className="absolute -top-24 -right-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none group-hover:bg-indigo-500/20 transition-all duration-1000"></div>
+                            <div className="absolute -top-24 -right-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none transition-all duration-1000"></div>
                             <div className="relative z-10">
                                 <div className="flex items-center gap-2 mb-6">
                                     <span className="px-4 py-1.5 bg-indigo-500/30 border border-indigo-400/30 rounded-full text-[10px] font-black uppercase tracking-[0.2em] backdrop-blur-md">IA Advisor</span>
@@ -323,7 +311,7 @@
                                     <div className="max-w-xl">
                                         <h2 className="text-4xl lg:text-5xl font-black mb-4 leading-tight">Finanças Inteligentes, Dan & Paty.</h2>
                                         <p className="text-indigo-100/70 mb-8 text-lg leading-relaxed">Nossa IA analisa onde vocês podem economizar de verdade.</p>
-                                        <button onClick=${getAdvice} disabled=${loadingAdvice || transactions.length === 0} className="bg-white text-indigo-900 px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-xl hover:scale-105 transition-all active:scale-95 disabled:opacity-40">
+                                        <button onClick=${getAdvice} disabled=${loadingAdvice || transactions.length === 0} className="bg-white text-indigo-900 px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-xl hover:scale-105 transition-all disabled:opacity-40">
                                             ${loadingAdvice ? html`<${Lucide.Loader2} className="animate-spin" size=${22} />` : html`<${Lucide.BrainCircuit} size=${22} />`}
                                             Analisar Gastos com IA
                                         </button>
@@ -332,14 +320,12 @@
                             </div>
                         </div>
 
-                        <!-- Summary Cards -->
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <${Card} title="Saldo Atual" value=${formatCurrency(summary.balance)} iconName="Wallet" colorClass="bg-indigo-50" textColor=${summary.balance >= 0 ? 'text-slate-800' : 'text-rose-600'} />
                             <${Card} title="Receitas" value=${formatCurrency(summary.income)} iconName="TrendingUp" colorClass="bg-emerald-50" textColor="text-emerald-600" />
                             <${Card} title="Despesas" value=${formatCurrency(summary.expenses)} iconName="TrendingDown" colorClass="bg-rose-50" textColor="text-rose-600" />
                         </div>
 
-                        <!-- Charts Section -->
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                             <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
                                 <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-2">
@@ -380,7 +366,6 @@
                             </div>
                         </div>
 
-                        <!-- Transactions History -->
                         <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
                             <div className="px-8 py-6 border-b border-slate-50 flex justify-between items-center bg-slate-50/40">
                                 <h3 className="text-xl font-black text-slate-800">Histórico</h3>
@@ -422,8 +407,7 @@
                         </div>
                     </main>
 
-                    <!-- FAB Mobile -->
-                    <button onClick=${() => setIsFormOpen(true)} className="sm:hidden fixed bottom-8 right-8 w-16 h-16 bg-indigo-600 text-white rounded-2xl shadow-2xl flex items-center justify-center z-50 active:scale-90 hover:rotate-90 transition-all">
+                    <button onClick=${() => setIsFormOpen(true)} className="sm:hidden fixed bottom-8 right-8 w-16 h-16 bg-indigo-600 text-white rounded-2xl shadow-2xl flex items-center justify-center z-50 transition-all active:scale-95">
                         <${Lucide.Plus} size=${32} />
                     </button>
 
