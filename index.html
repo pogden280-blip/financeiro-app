@@ -4,33 +4,293 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Finanças Inteligentes</title>
+    <title>Finanças Pró - IA</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f8fafc;
-        }
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .chart-container .recharts-responsive-container { min-height: 300px; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
     </style>
 <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@^19.2.4",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
-    "react/": "https://esm.sh/react@^19.2.4/",
     "@google/genai": "https://esm.sh/@google/genai@^1.41.0",
+    "react": "https://esm.sh/react@^19.2.4",
     "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "react/": "https://esm.sh/react@^19.2.4/",
     "recharts": "https://esm.sh/recharts@^3.7.0"
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
 </head>
 <body>
     <div id="root"></div>
-<script type="module" src="/index.tsx"></script>
+
+    <script type="module">
+        import { h, Component, render } from 'https://esm.sh/preact';
+        import { useState, useEffect, useMemo } from 'https://esm.sh/preact/hooks';
+        import htm from 'https://esm.sh/htm';
+        import { GoogleGenAI } from 'https://esm.sh/@google/genai';
+        import * as Lucide from 'https://esm.sh/lucide-react';
+        import { 
+            PieChart, Pie, Cell, ResponsiveContainer, 
+            BarChart, Bar, XAxis, YAxis, Tooltip, Legend 
+        } from 'https://esm.sh/recharts';
+
+        const html = htm.bind(h);
+
+        // --- Configurações e Tipos ---
+        const CATEGORIES = {
+            income: ['Salário', 'Investimentos', 'Presente', 'Outros'],
+            expense: ['Alimentação', 'Transporte', 'Moradia', 'Lazer', 'Saúde', 'Educação', 'Outros']
+        };
+
+        const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+        // --- Componentes ---
+
+        const Card = ({ title, value, icon: Icon, colorClass, textColor }) => html`
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                <div class="p-3 ${colorClass} rounded-xl">
+                    <${Icon} class="${textColor}" size=${24} />
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-slate-500">${title}</p>
+                    <p class="text-2xl font-bold ${textColor}">${value}</p>
+                </div>
+            </div>
+        `;
+
+        const TransactionForm = ({ onAdd, onClose }) => {
+            const [description, setDescription] = useState('');
+            const [amount, setAmount] = useState('');
+            const [type, setType] = useState('expense');
+            const [category, setCategory] = useState(CATEGORIES.expense[0]);
+            const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (!description || !amount) return;
+                onAdd({ description, amount: parseFloat(amount), type, category, date });
+                onClose();
+            };
+
+            return html`
+                <div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                    <div class="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-fade-in">
+                        <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <h2 class="text-xl font-bold text-slate-800">Nova Transação</h2>
+                            <button onClick=${onClose} class="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                                <${Lucide.X} size=${20} class="text-slate-500" />
+                            </button>
+                        </div>
+                        <form onSubmit=${handleSubmit} class="p-6 space-y-4">
+                            <div class="flex p-1 bg-slate-100 rounded-lg">
+                                <button type="button" onClick=${() => { setType('income'); setCategory(CATEGORIES.income[0]); }}
+                                    class="flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${type === 'income' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}">
+                                    Receita
+                                </button>
+                                <button type="button" onClick=${() => { setType('expense'); setCategory(CATEGORIES.expense[0]); }}
+                                    class="flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${type === 'expense' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500'}">
+                                    Despesa
+                                </button>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Descrição</label>
+                                <input type="text" required value=${description} onInput=${e => setDescription(e.target.value)} class="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Ex: Mercado" />
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Valor (R$)</label>
+                                    <input type="number" step="0.01" required value=${amount} onInput=${e => setAmount(e.target.value)} class="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="0,00" />
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Data</label>
+                                    <input type="date" required value=${date} onInput=${e => setDate(e.target.value)} class="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Categoria</label>
+                                <select value=${category} onChange=${e => setCategory(e.target.value)} class="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+                                    ${(type === 'income' ? CATEGORIES.income : CATEGORIES.expense).map(cat => html`<option value=${cat}>${cat}</option>`)}
+                                </select>
+                            </div>
+                            <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-lg transition-all flex items-center justify-center gap-2 mt-4">
+                                <${Lucide.PlusCircle} size=${20} /> Adicionar
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            `;
+        };
+
+        const App = () => {
+            const [transactions, setTransactions] = useState([]);
+            const [isFormOpen, setIsFormOpen] = useState(false);
+            const [aiAdvice, setAiAdvice] = useState(null);
+            const [loadingAdvice, setLoadingAdvice] = useState(false);
+
+            useEffect(() => {
+                const saved = localStorage.getItem('financas_pro_data');
+                if (saved) setTransactions(JSON.parse(saved));
+            }, []);
+
+            useEffect(() => {
+                localStorage.setItem('financas_pro_data', JSON.stringify(transactions));
+            }, [transactions]);
+
+            const summary = useMemo(() => {
+                return transactions.reduce((acc, t) => {
+                    if (t.type === 'income') { acc.income += t.amount; acc.balance += t.amount; }
+                    else { acc.expenses += t.amount; acc.balance -= t.amount; }
+                    return acc;
+                }, { balance: 0, income: 0, expenses: 0 });
+            }, [transactions]);
+
+            const categoryData = useMemo(() => {
+                const data = transactions.filter(t => t.type === 'expense').reduce((acc, t) => {
+                    const idx = acc.findIndex(i => i.name === t.category);
+                    if (idx > -1) acc[idx].value += t.amount;
+                    else acc.push({ name: t.category, value: t.amount });
+                    return acc;
+                }, []);
+                return data;
+            }, [transactions]);
+
+            const formatCurrency = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+
+            const handleAdd = (t) => {
+                setTransactions([...transactions, { ...t, id: Date.now().toString() }]);
+            };
+
+            const handleDelete = (id) => {
+                setTransactions(transactions.filter(t => t.id !== id));
+            };
+
+            const getAdvice = async () => {
+                if (transactions.length === 0) return;
+                setLoadingAdvice(true);
+                try {
+                    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+                    const context = transactions.map(t => `${t.date}: ${t.description} - R$ ${t.amount} (${t.type})`).join('\n');
+                    const response = await ai.models.generateContent({
+                        model: 'gemini-3-flash-preview',
+                        contents: `Analise estes gastos e dê 3 dicas curtas de economia: \n${context}`,
+                        config: { systemInstruction: "Você é um consultor financeiro brasileiro." }
+                    });
+                    setAiAdvice(response.text);
+                } catch (e) {
+                    console.error(e);
+                    setAiAdvice("Não foi possível carregar os conselhos agora.");
+                }
+                setLoadingAdvice(false);
+            };
+
+            return html`
+                <div class="min-h-screen">
+                    <header class="bg-indigo-600 text-white shadow-lg sticky top-0 z-40">
+                        <div class="container mx-auto px-4 h-16 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <div class="bg-white p-1.5 rounded-lg shadow-sm">
+                                    <${Lucide.Sparkles} class="text-indigo-600" size=${24} />
+                                </div>
+                                <h1 class="text-xl font-bold">Finanças Pró</h1>
+                            </div>
+                            <button onClick=${() => setIsFormOpen(true)} class="hidden sm:flex items-center gap-2 bg-indigo-500 hover:bg-indigo-400 px-4 py-2 rounded-lg font-semibold transition-all shadow-sm">
+                                <${Lucide.Plus} size=${20} /> Nova Transação
+                            </button>
+                        </div>
+                    </header>
+
+                    <main class="container mx-auto px-4 py-8 space-y-8">
+                        <div class="bg-gradient-to-br from-indigo-900 to-indigo-800 rounded-3xl p-6 lg:p-8 text-white shadow-xl relative overflow-hidden">
+                            <div class="relative z-10 max-w-2xl">
+                                <span class="px-3 py-1 bg-white/20 rounded-full text-xs font-bold uppercase mb-4 inline-block">IA Advisor</span>
+                                ${aiAdvice ? html`
+                                    <div class="animate-fade-in">
+                                        <p class="text-indigo-100 text-lg leading-relaxed whitespace-pre-line">${aiAdvice}</p>
+                                        <button onClick=${getAdvice} class="mt-4 text-indigo-300 hover:text-white flex items-center gap-2 text-sm">
+                                            <${Lucide.RefreshCw} size=${14} class="${loadingAdvice ? 'animate-spin' : ''}" /> Atualizar
+                                        </button>
+                                    </div>
+                                ` : html`
+                                    <div>
+                                        <h2 class="text-3xl font-bold mb-2">Seu assistente financeiro inteligente.</h2>
+                                        <p class="text-indigo-200 mb-6">Analise seus padrões de consumo com inteligência artificial.</p>
+                                        <button onClick=${getAdvice} disabled=${loadingAdvice || transactions.length === 0} class="bg-white text-indigo-900 px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg disabled:opacity-50">
+                                            ${loadingAdvice ? html`<${Lucide.Loader2} class="animate-spin" size=${20} />` : html`<${Lucide.BrainCircuit} size=${20} />`}
+                                            Consultar IA
+                                        </button>
+                                    </div>
+                                `}
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <${Card} title="Saldo Total" value=${formatCurrency(summary.balance)} icon=${Lucide.Wallet} colorClass="bg-indigo-50" textColor=${summary.balance >= 0 ? 'text-slate-800' : 'text-rose-600'} />
+                            <${Card} title="Receitas" value=${formatCurrency(summary.income)} icon=${Lucide.TrendingUp} colorClass="bg-emerald-50" textColor="text-emerald-600" />
+                            <${Card} title="Despesas" value=${formatCurrency(summary.expenses)} icon=${Lucide.TrendingDown} colorClass="bg-rose-50" textColor="text-rose-600" />
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                                <h3 class="text-lg font-bold text-slate-800 mb-4">Gastos por Categoria</h3>
+                                <div class="h-[300px] chart-container">
+                                    ${categoryData.length > 0 ? html`
+                                        <${ResponsiveContainer} width="100%" height="100%">
+                                            <${PieChart}>
+                                                <${Pie} data=${categoryData} cx="50%" cy="50%" innerRadius=${60} outerRadius=${80} paddingAngle=${5} dataKey="value">
+                                                    ${categoryData.map((_, i) => html`<${Cell} fill=${COLORS[i % COLORS.length]} />`)}
+                                                <//>
+                                                <${Tooltip} formatter=${v => formatCurrency(v)} />
+                                                <${Legend} />
+                                            <//>
+                                        <//>
+                                    ` : html`<div class="h-full flex items-center justify-center text-slate-400 italic">Sem dados de despesas</div>`}
+                                </div>
+                            </div>
+                            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                                <h3 class="text-lg font-bold text-slate-800 mb-4">Últimas Transações</h3>
+                                <div class="space-y-3 overflow-y-auto max-h-[300px]">
+                                    ${transactions.length === 0 ? html`<p class="text-center text-slate-400 py-8">Nenhuma transação</p>` : 
+                                    [...transactions].reverse().map(t => html`
+                                        <div class="flex items-center justify-between p-3 hover:bg-slate-50 rounded-xl transition-colors group">
+                                            <div class="flex items-center gap-3">
+                                                <div class="p-2 bg-slate-100 rounded-lg text-slate-500"><${Lucide.Package} size=${16} /></div>
+                                                <div>
+                                                    <p class="font-medium text-slate-800">${t.description}</p>
+                                                    <p class="text-xs text-slate-400">${t.date} • ${t.category}</p>
+                                                </div>
+                                            </div>
+                                            <div class="flex items-center gap-4">
+                                                <span class="font-bold text-sm ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}">
+                                                    ${t.type === 'income' ? '+' : '-'} ${formatCurrency(t.amount)}
+                                                </span>
+                                                <button onClick=${() => handleDelete(t.id)} class="p-1 text-slate-300 hover:text-rose-600 transition-colors">
+                                                    <${Lucide.Trash2} size=${16} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    `)}
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+
+                    <button onClick=${() => setIsFormOpen(true)} class="sm:hidden fixed bottom-6 right-6 w-16 h-16 bg-indigo-600 text-white rounded-full shadow-2xl flex items-center justify-center z-50">
+                        <${Lucide.Plus} size=${32} />
+                    </button>
+
+                    ${isFormOpen && html`<${TransactionForm} onAdd=${handleAdd} onClose=${() => setIsFormOpen(false)} />`}
+                </div>
+            `;
+        };
+
+        render(html`<${App} />`, document.getElementById('root'));
+    </script>
 </body>
 </html>
