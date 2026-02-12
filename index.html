@@ -35,6 +35,7 @@
     <div id="root"></div>
 
     <script type="module">
+        // Importações diretas e consistentes para evitar erro #31
         import React, { useState, useEffect, useMemo, useCallback } from 'https://esm.sh/react@18.3.1';
         import ReactDOM from 'https://esm.sh/react-dom@18.3.1/client';
         import htm from 'https://esm.sh/htm@3.1.1';
@@ -115,7 +116,7 @@
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Descrição</label>
-                                <input type="text" required value=${description} onChange=${e => setDescription(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Ex: Aluguel, Mercado" />
+                                <input type="text" required value=${description} onChange=${e => setDescription(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Ex: Mercado, Aluguel" />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -129,7 +130,7 @@
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Categoria</label>
-                                <select value=${category} onChange=${e => setCategory(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none bg-white transition-all cursor-pointer">
+                                <select value=${category} onChange=${e => setCategory(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
                                     ${(type === 'income' ? CATEGORIES.income : CATEGORIES.expense).map(cat => html`<option key=${cat} value=${cat}>${cat}</option>`)}
                                 </select>
                             </div>
@@ -147,29 +148,36 @@
             const [isFormOpen, setIsFormOpen] = useState(false);
             const [aiAdvice, setAiAdvice] = useState(null);
             const [loadingAdvice, setLoadingAdvice] = useState(false);
-            const [syncStatus, setSyncStatus] = useState('idle'); // idle, syncing, synced, error
+            const [syncStatus, setSyncStatus] = useState('idle');
 
             // --- Database Functions ---
             const loadData = useCallback(async () => {
                 setSyncStatus('syncing');
+                console.log("Iniciando carregamento do JSONBin...");
                 try {
                     const res = await fetch(API_URL, {
-                        headers: { 'X-Master-Key': MASTER_KEY }
+                        headers: { 
+                            'X-Master-Key': MASTER_KEY,
+                            'Cache-Control': 'no-cache'
+                        }
                     });
+                    if (!res.ok) throw new Error("Erro na resposta do servidor");
                     const data = await res.json();
+                    
                     if (data.record && Array.isArray(data.record)) {
+                        console.log("Dados carregados com sucesso da nuvem:", data.record.length, "registros");
                         setTransactions(data.record);
                         setSyncStatus('synced');
+                        localStorage.setItem('dan_paty_financas_v1', JSON.stringify(data.record));
                     } else {
-                        // Fallback local if cloud is empty or different format
+                        console.warn("Bin vazio ou formato inválido. Tentando local...");
                         const saved = localStorage.getItem('dan_paty_financas_v1');
                         if (saved) setTransactions(JSON.parse(saved));
                         setSyncStatus('idle');
                     }
                 } catch (e) {
-                    console.error("Erro ao carregar do banco:", e);
+                    console.error("Erro crítico ao carregar:", e);
                     setSyncStatus('error');
-                    // Tentar carregar local em caso de erro
                     const saved = localStorage.getItem('dan_paty_financas_v1');
                     if (saved) setTransactions(JSON.parse(saved));
                 }
@@ -177,8 +185,9 @@
 
             const saveData = useCallback(async (dataToSave) => {
                 setSyncStatus('syncing');
+                console.log("Salvando dados no JSONBin...");
                 try {
-                    await fetch(API_URL, {
+                    const res = await fetch(API_URL, {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json',
@@ -186,10 +195,16 @@
                         },
                         body: JSON.stringify(dataToSave)
                     });
-                    setSyncStatus('synced');
-                    localStorage.setItem('dan_paty_financas_v1', JSON.stringify(dataToSave));
+                    
+                    if (res.ok) {
+                        console.log("Sincronização concluída!");
+                        setSyncStatus('synced');
+                        localStorage.setItem('dan_paty_financas_v1', JSON.stringify(dataToSave));
+                    } else {
+                        throw new Error(`Falha no salvamento: ${res.status}`);
+                    }
                 } catch (e) {
-                    console.error("Erro ao salvar no banco:", e);
+                    console.error("Erro ao sincronizar:", e);
                     setSyncStatus('error');
                     localStorage.setItem('dan_paty_financas_v1', JSON.stringify(dataToSave));
                 }
@@ -228,17 +243,17 @@
                 return Object.values(months).slice(-6);
             }, [transactions]);
 
-            const handleAdd = (t) => {
+            const handleAdd = async (t) => {
                 const newList = [...transactions, { ...t, id: Math.random().toString(36).substr(2, 9) }];
                 setTransactions(newList);
-                saveData(newList);
+                await saveData(newList);
             };
 
-            const handleDelete = (id) => {
-                if (confirm("Excluir esta transação?")) {
+            const handleDelete = async (id) => {
+                if (confirm("Deseja mesmo excluir?")) {
                     const newList = transactions.filter(t => t.id !== id);
                     setTransactions(newList);
-                    saveData(newList);
+                    await saveData(newList);
                 }
             };
 
@@ -250,13 +265,12 @@
                     const context = transactions.slice(-15).map(t => `${t.date}: ${t.description} - R$ ${t.amount} (${t.type})`).join('\n');
                     const response = await ai.models.generateContent({
                         model: 'gemini-3-flash-preview',
-                        contents: `Analise o histórico do casal Dan & Paty e dê 3 conselhos financeiros práticos e curtos em português:\n${context}`,
-                        config: { systemInstruction: "Você é um mentor financeiro sênior brasileiro prático e motivador para casais." }
+                        contents: `Analise o histórico do casal Dan & Paty e dê 3 conselhos financeiros curtos em português:\n${context}`,
+                        config: { systemInstruction: "Você é um mentor financeiro sênior brasileiro prático e focado no bem-estar do casal Dan e Paty." }
                     });
                     setAiAdvice(response.text);
                 } catch (e) {
-                    console.error("AI Error:", e);
-                    setAiAdvice("Não foi possível gerar conselhos agora. Tente novamente mais tarde.");
+                    setAiAdvice("Adicione mais transações para uma análise melhor!");
                 }
                 setLoadingAdvice(false);
             };
@@ -271,22 +285,19 @@
                                 </div>
                                 <div>
                                     <h1 className="text-xl font-black tracking-tight leading-none">Dan & Paty Finanças</h1>
-                                    <div className="flex items-center gap-1 mt-1 text-[10px] font-bold opacity-70 uppercase tracking-widest">
-                                        ${syncStatus === 'syncing' ? html`
-                                            <${Lucide.Loader2} size=${10} className="animate-spin" /> Sincronizando...
-                                        ` : syncStatus === 'synced' ? html`
-                                            <${Lucide.CloudCheck} size=${10} /> Nuvem Ativa
-                                        ` : syncStatus === 'error' ? html`
-                                            <${Lucide.CloudOff} size=${10} className="text-rose-300" /> Erro na Nuvem
-                                        ` : html`<${Lucide.Database} size=${10} /> Local`}
+                                    <div className="flex items-center gap-1 mt-1 text-[10px] font-bold opacity-80 uppercase tracking-widest">
+                                        ${syncStatus === 'syncing' ? html`<${Lucide.Loader2} size=${10} className="animate-spin" /> Sincronizando...` : 
+                                          syncStatus === 'synced' ? html`<${Lucide.CloudCheck} size=${12} className="text-emerald-300" /> Nuvem Ativa` : 
+                                          syncStatus === 'error' ? html`<${Lucide.CloudOff} size=${12} className="text-rose-300" /> Erro de Conexão` : 
+                                          html`<${Lucide.Database} size=${10} /> Local`}
                                     </div>
                                 </div>
                             </div>
                             <div className="flex items-center gap-3">
-                                <button onClick=${() => setIsFormOpen(true)} className="hidden sm:flex items-center gap-2 bg-white/10 hover:bg-white/20 px-5 py-2 rounded-xl font-bold transition-all active:scale-95">
-                                    <${Lucide.Plus} size=${18} /> Novo Registro
+                                <button onClick=${() => setIsFormOpen(true)} className="hidden sm:flex items-center gap-2 bg-white/10 hover:bg-white/20 px-5 py-2 rounded-xl font-bold transition-all">
+                                    <${Lucide.Plus} size=${18} /> Novo
                                 </button>
-                                <button onClick=${loadData} title="Forçar Atualização" className="p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-all active:rotate-180">
+                                <button onClick=${loadData} title="Atualizar dados" className="p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-all active:rotate-180">
                                     <${Lucide.RefreshCw} size=${18} className=${syncStatus === 'syncing' ? 'animate-spin' : ''} />
                                 </button>
                             </div>
@@ -294,14 +305,13 @@
                     </header>
 
                     <main className="container mx-auto px-4 py-8 space-y-8 max-w-6xl">
-                        <!-- AI Hero Section -->
+                        <!-- Hero Section IA -->
                         <div className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-slate-900 rounded-[2.5rem] p-8 lg:p-12 text-white shadow-2xl relative overflow-hidden group">
                             <div className="absolute -top-24 -right-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none group-hover:bg-indigo-500/20 transition-all duration-1000"></div>
                             <div className="relative z-10">
                                 <div className="flex items-center gap-2 mb-6">
                                     <span className="px-4 py-1.5 bg-indigo-500/30 border border-indigo-400/30 rounded-full text-[10px] font-black uppercase tracking-[0.2em] backdrop-blur-md">IA Advisor</span>
                                 </div>
-                                
                                 ${aiAdvice ? html`
                                     <div className="animate-fade-in space-y-6">
                                         <p className="text-indigo-50 text-xl lg:text-2xl leading-relaxed font-medium italic">"${aiAdvice}"</p>
@@ -311,8 +321,8 @@
                                     </div>
                                 ` : html`
                                     <div className="max-w-xl">
-                                        <h2 className="text-4xl lg:text-5xl font-black mb-4 leading-tight">Suas finanças inteligentes, Dan & Paty.</h2>
-                                        <p className="text-indigo-100/70 mb-8 text-lg font-medium leading-relaxed">Nossa IA analisa os padrões de vocês e sugere onde podem economizar de verdade.</p>
+                                        <h2 className="text-4xl lg:text-5xl font-black mb-4 leading-tight">Finanças Inteligentes, Dan & Paty.</h2>
+                                        <p className="text-indigo-100/70 mb-8 text-lg leading-relaxed">Nossa IA analisa onde vocês podem economizar de verdade.</p>
                                         <button onClick=${getAdvice} disabled=${loadingAdvice || transactions.length === 0} className="bg-white text-indigo-900 px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-xl hover:scale-105 transition-all active:scale-95 disabled:opacity-40">
                                             ${loadingAdvice ? html`<${Lucide.Loader2} className="animate-spin" size=${22} />` : html`<${Lucide.BrainCircuit} size=${22} />`}
                                             Analisar Gastos com IA
@@ -329,11 +339,11 @@
                             <${Card} title="Despesas" value=${formatCurrency(summary.expenses)} iconName="TrendingDown" colorClass="bg-rose-50" textColor="text-rose-600" />
                         </div>
 
-                        <!-- Main Charts Section -->
+                        <!-- Charts Section -->
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                             <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
                                 <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-2">
-                                    <${Lucide.PieChart} className="text-indigo-500" size=${22} /> Categorias de Gastos
+                                    <${Lucide.PieChart} className="text-indigo-500" size=${22} /> Gastos por Categoria
                                 </h3>
                                 <div className="h-[320px]">
                                     ${categoryData.length > 0 ? html`
@@ -346,7 +356,7 @@
                                                 <${Legend} iconType="circle" />
                                             <//>
                                         <//>
-                                    ` : html`<div className="h-full flex items-center justify-center text-slate-300 italic font-medium">Sem dados de gastos</div>`}
+                                    ` : html`<div className="h-full flex items-center justify-center text-slate-300 italic">Sem gastos registrados</div>`}
                                 </div>
                             </div>
                             
@@ -365,15 +375,15 @@
                                                 <${Bar} dataKey="despesa" fill="#ef4444" radius=${[6, 6, 0, 0]} />
                                             <//>
                                         <//>
-                                    ` : html`<div className="h-full flex items-center justify-center text-slate-300 italic font-medium">Aguardando mais transações</div>`}
+                                    ` : html`<div className="h-full flex items-center justify-center text-slate-300 italic">Aguardando transações...</div>`}
                                 </div>
                             </div>
                         </div>
 
-                        <!-- History List -->
+                        <!-- Transactions History -->
                         <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
                             <div className="px-8 py-6 border-b border-slate-50 flex justify-between items-center bg-slate-50/40">
-                                <h3 className="text-xl font-black text-slate-800">Histórico de Transações</h3>
+                                <h3 className="text-xl font-black text-slate-800">Histórico</h3>
                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">${transactions.length} registros</span>
                             </div>
                             <div className="overflow-x-auto">
@@ -383,24 +393,20 @@
                                             <th className="px-8 py-5">Data</th>
                                             <th className="px-8 py-5">Descrição</th>
                                             <th className="px-8 py-5">Categoria</th>
-                                            <th className="px-8 py-5">Valor</th>
+                                            <th className="px-6 py-5">Valor</th>
                                             <th className="px-8 py-5 text-right">Ação</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
-                                        ${transactions.length === 0 ? html`
-                                            <tr><td colSpan="5" className="px-8 py-16 text-center text-slate-300 font-medium italic">Nenhuma transação registrada ainda.</td></tr>
-                                        ` : 
+                                        ${transactions.length === 0 ? html`<tr><td colSpan="5" className="px-8 py-16 text-center text-slate-300 italic">Nenhum registro.</td></tr>` : 
                                         [...transactions].sort((a,b) => new Date(b.date) - new Date(a.date)).map(t => html`
                                             <tr key=${t.id} className="hover:bg-slate-50/50 transition-colors group">
                                                 <td className="px-8 py-5 text-sm text-slate-500 font-medium">${new Date(t.date).toLocaleDateString('pt-BR')}</td>
-                                                <td className="px-8 py-5"><p className="font-bold text-slate-800 text-sm">${t.description}</p></td>
+                                                <td className="px-8 py-5 font-bold text-slate-800 text-sm">${t.description}</td>
                                                 <td className="px-8 py-5">
-                                                    <span className="px-3 py-1 rounded-full text-[10px] font-black bg-slate-100 text-slate-600 border border-slate-200 uppercase tracking-wider">
-                                                        ${t.category}
-                                                    </span>
+                                                    <span className="px-3 py-1 rounded-full text-[10px] font-black bg-slate-100 text-slate-600 border border-slate-200 uppercase tracking-wider">${t.category}</span>
                                                 </td>
-                                                <td className=${`px-8 py-5 font-black text-sm ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                <td className=${`px-6 py-5 font-black text-sm ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
                                                     ${t.type === 'income' ? '+' : '-'} ${formatCurrency(t.amount)}
                                                 </td>
                                                 <td className="px-8 py-5 text-right">
@@ -416,8 +422,8 @@
                         </div>
                     </main>
 
-                    <!-- Mobile Add FAB -->
-                    <button onClick=${() => setIsFormOpen(true)} className="sm:hidden fixed bottom-8 right-8 w-16 h-16 bg-indigo-600 text-white rounded-2xl shadow-2xl flex items-center justify-center z-50 active:scale-90 transition-all hover:rotate-90">
+                    <!-- FAB Mobile -->
+                    <button onClick=${() => setIsFormOpen(true)} className="sm:hidden fixed bottom-8 right-8 w-16 h-16 bg-indigo-600 text-white rounded-2xl shadow-2xl flex items-center justify-center z-50 active:scale-90 hover:rotate-90 transition-all">
                         <${Lucide.Plus} size=${32} />
                     </button>
 
