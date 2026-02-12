@@ -17,7 +17,6 @@
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        /* Recharts container fix */
         .recharts-responsive-container { min-height: 300px; }
     </style>
 <script type="importmap">
@@ -36,17 +35,10 @@
     <div id="root"></div>
 
     <script type="module">
-        /**
-         * CRITICAL FIX: To avoid "Minified React Error #31" (Symbol mismatch),
-         * we must ensure every library uses the EXACT same React instance.
-         * We achieve this by pinning the version and using '?deps=react@18.3.1' on esm.sh imports.
-         */
-        import React, { useState, useEffect, useMemo } from 'https://esm.sh/react@18.3.1';
+        import React, { useState, useEffect, useMemo, useCallback } from 'https://esm.sh/react@18.3.1';
         import ReactDOM from 'https://esm.sh/react-dom@18.3.1/client';
         import htm from 'https://esm.sh/htm@3.1.1';
         import { GoogleGenAI } from 'https://esm.sh/@google/genai@1.41.0';
-        
-        // Force external libraries to use the main React instance we just imported
         import * as Lucide from 'https://esm.sh/lucide-react@0.460.0?deps=react@18.3.1';
         import { 
             PieChart, Pie, Cell, ResponsiveContainer, 
@@ -55,7 +47,11 @@
 
         const html = htm.bind(React.createElement);
 
-        // --- Configurações ---
+        // --- Configurações do Banco de Dados (JSONBin.io) ---
+        const BIN_ID = '698e46b243b1c97be97a69b8';
+        const MASTER_KEY = '$2a$10$RxtN.VwYLRsGcmoCji08oeL2di9W0D4tyrBZe/vIV77N665ALQ9Vi';
+        const API_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+
         const CATEGORIES = {
             income: ['Salário', 'Investimentos', 'Presente', 'Outros'],
             expense: ['Alimentação', 'Transporte', 'Moradia', 'Lazer', 'Saúde', 'Educação', 'Outros']
@@ -119,16 +115,16 @@
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Descrição</label>
-                                <input type="text" required value=${description} onChange=${e => setDescription(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all" placeholder="Ex: Aluguel, Mercado" />
+                                <input type="text" required value=${description} onChange=${e => setDescription(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Ex: Aluguel, Mercado" />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Valor (R$)</label>
-                                    <input type="number" step="0.01" required value=${amount} onChange=${e => setAmount(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all" placeholder="0,00" />
+                                    <input type="number" step="0.01" required value=${amount} onChange=${e => setAmount(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="0,00" />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Data</label>
-                                    <input type="date" required value=${date} onChange=${e => setDate(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
+                                    <input type="date" required value=${date} onChange=${e => setDate(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
                                 </div>
                             </div>
                             <div>
@@ -151,17 +147,57 @@
             const [isFormOpen, setIsFormOpen] = useState(false);
             const [aiAdvice, setAiAdvice] = useState(null);
             const [loadingAdvice, setLoadingAdvice] = useState(false);
+            const [syncStatus, setSyncStatus] = useState('idle'); // idle, syncing, synced, error
 
-            useEffect(() => {
-                const saved = localStorage.getItem('dan_paty_financas_v1');
-                if (saved) {
-                    try { setTransactions(JSON.parse(saved)); } catch(e) { console.error("Storage load error", e); }
+            // --- Database Functions ---
+            const loadData = useCallback(async () => {
+                setSyncStatus('syncing');
+                try {
+                    const res = await fetch(API_URL, {
+                        headers: { 'X-Master-Key': MASTER_KEY }
+                    });
+                    const data = await res.json();
+                    if (data.record && Array.isArray(data.record)) {
+                        setTransactions(data.record);
+                        setSyncStatus('synced');
+                    } else {
+                        // Fallback local if cloud is empty or different format
+                        const saved = localStorage.getItem('dan_paty_financas_v1');
+                        if (saved) setTransactions(JSON.parse(saved));
+                        setSyncStatus('idle');
+                    }
+                } catch (e) {
+                    console.error("Erro ao carregar do banco:", e);
+                    setSyncStatus('error');
+                    // Tentar carregar local em caso de erro
+                    const saved = localStorage.getItem('dan_paty_financas_v1');
+                    if (saved) setTransactions(JSON.parse(saved));
+                }
+            }, []);
+
+            const saveData = useCallback(async (dataToSave) => {
+                setSyncStatus('syncing');
+                try {
+                    await fetch(API_URL, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Master-Key': MASTER_KEY
+                        },
+                        body: JSON.stringify(dataToSave)
+                    });
+                    setSyncStatus('synced');
+                    localStorage.setItem('dan_paty_financas_v1', JSON.stringify(dataToSave));
+                } catch (e) {
+                    console.error("Erro ao salvar no banco:", e);
+                    setSyncStatus('error');
+                    localStorage.setItem('dan_paty_financas_v1', JSON.stringify(dataToSave));
                 }
             }, []);
 
             useEffect(() => {
-                localStorage.setItem('dan_paty_financas_v1', JSON.stringify(transactions));
-            }, [transactions]);
+                loadData();
+            }, [loadData]);
 
             const summary = useMemo(() => {
                 return transactions.reduce((acc, t) => {
@@ -193,12 +229,16 @@
             }, [transactions]);
 
             const handleAdd = (t) => {
-                setTransactions(prev => [...prev, { ...t, id: Math.random().toString(36).substr(2, 9) }]);
+                const newList = [...transactions, { ...t, id: Math.random().toString(36).substr(2, 9) }];
+                setTransactions(newList);
+                saveData(newList);
             };
 
             const handleDelete = (id) => {
                 if (confirm("Excluir esta transação?")) {
-                    setTransactions(prev => prev.filter(t => t.id !== id));
+                    const newList = transactions.filter(t => t.id !== id);
+                    setTransactions(newList);
+                    saveData(newList);
                 }
             };
 
@@ -210,13 +250,13 @@
                     const context = transactions.slice(-15).map(t => `${t.date}: ${t.description} - R$ ${t.amount} (${t.type})`).join('\n');
                     const response = await ai.models.generateContent({
                         model: 'gemini-3-flash-preview',
-                        contents: `Analise meu histórico e forneça 3 dicas práticas em português para o casal Dan & Paty:\n${context}`,
-                        config: { systemInstruction: "Você é um mentor financeiro sênior brasileiro prático e motivador, focado em ajudar o casal Dan e Paty." }
+                        contents: `Analise o histórico do casal Dan & Paty e dê 3 conselhos financeiros práticos e curtos em português:\n${context}`,
+                        config: { systemInstruction: "Você é um mentor financeiro sênior brasileiro prático e motivador para casais." }
                     });
                     setAiAdvice(response.text);
                 } catch (e) {
                     console.error("AI Error:", e);
-                    setAiAdvice("Continue registrando seus gastos para que eu possa analisar melhor seu perfil!");
+                    setAiAdvice("Não foi possível gerar conselhos agora. Tente novamente mais tarde.");
                 }
                 setLoadingAdvice(false);
             };
@@ -229,11 +269,27 @@
                                 <div className="bg-white p-1.5 rounded-xl">
                                     <${Lucide.Sparkles} className="text-indigo-600" size=${24} />
                                 </div>
-                                <h1 className="text-xl font-black tracking-tight">Dan & Paty Finanças</h1>
+                                <div>
+                                    <h1 className="text-xl font-black tracking-tight leading-none">Dan & Paty Finanças</h1>
+                                    <div className="flex items-center gap-1 mt-1 text-[10px] font-bold opacity-70 uppercase tracking-widest">
+                                        ${syncStatus === 'syncing' ? html`
+                                            <${Lucide.Loader2} size=${10} className="animate-spin" /> Sincronizando...
+                                        ` : syncStatus === 'synced' ? html`
+                                            <${Lucide.CloudCheck} size=${10} /> Nuvem Ativa
+                                        ` : syncStatus === 'error' ? html`
+                                            <${Lucide.CloudOff} size=${10} className="text-rose-300" /> Erro na Nuvem
+                                        ` : html`<${Lucide.Database} size=${10} /> Local`}
+                                    </div>
+                                </div>
                             </div>
-                            <button onClick=${() => setIsFormOpen(true)} className="hidden sm:flex items-center gap-2 bg-white/10 hover:bg-white/20 px-5 py-2 rounded-xl font-bold transition-all">
-                                <${Lucide.Plus} size=${18} /> Novo Registro
-                            </button>
+                            <div className="flex items-center gap-3">
+                                <button onClick=${() => setIsFormOpen(true)} className="hidden sm:flex items-center gap-2 bg-white/10 hover:bg-white/20 px-5 py-2 rounded-xl font-bold transition-all active:scale-95">
+                                    <${Lucide.Plus} size=${18} /> Novo Registro
+                                </button>
+                                <button onClick=${loadData} title="Forçar Atualização" className="p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-all active:rotate-180">
+                                    <${Lucide.RefreshCw} size=${18} className=${syncStatus === 'syncing' ? 'animate-spin' : ''} />
+                                </button>
+                            </div>
                         </div>
                     </header>
 
@@ -261,7 +317,6 @@
                                             ${loadingAdvice ? html`<${Lucide.Loader2} className="animate-spin" size=${22} />` : html`<${Lucide.BrainCircuit} size=${22} />`}
                                             Analisar Gastos com IA
                                         </button>
-                                        ${transactions.length === 0 && html`<p className="mt-4 text-xs text-indigo-300/60 font-medium">Cadastre transações para habilitar os insights.</p>`}
                                     </div>
                                 `}
                             </div>
