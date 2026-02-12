@@ -210,8 +210,8 @@
                     const context = transactions.slice(-15).map(t => `${t.date}: ${t.description} - R$ ${t.amount} (${t.type})`).join('\n');
                     const response = await ai.models.generateContent({
                         model: 'gemini-3-flash-preview',
-                        contents: `Analise meu histórico e forneça 3 dicas práticas em português:\n${context}`,
-                        config: { systemInstruction: "Você é um mentor financeiro sênior brasileiro prático e motivador." }
+                        contents: `Analise meu histórico e forneça 3 dicas práticas em português para o casal Dan & Paty:\n${context}`,
+                        config: { systemInstruction: "Você é um mentor financeiro sênior brasileiro prático e motivador, focado em ajudar o casal Dan e Paty." }
                     });
                     setAiAdvice(response.text);
                 } catch (e) {
@@ -256,7 +256,7 @@
                                 ` : html`
                                     <div className="max-w-xl">
                                         <h2 className="text-4xl lg:text-5xl font-black mb-4 leading-tight">Suas finanças inteligentes, Dan & Paty.</h2>
-                                        <p className="text-indigo-100/70 mb-8 text-lg font-medium leading-relaxed">Nossa IA analisa seus padrões e sugere onde vocês podem economizar de verdade.</p>
+                                        <p className="text-indigo-100/70 mb-8 text-lg font-medium leading-relaxed">Nossa IA analisa os padrões de vocês e sugere onde podem economizar de verdade.</p>
                                         <button onClick=${getAdvice} disabled=${loadingAdvice || transactions.length === 0} className="bg-white text-indigo-900 px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-xl hover:scale-105 transition-all active:scale-95 disabled:opacity-40">
                                             ${loadingAdvice ? html`<${Lucide.Loader2} className="animate-spin" size=${22} />` : html`<${Lucide.BrainCircuit} size=${22} />`}
                                             Analisar Gastos com IA
