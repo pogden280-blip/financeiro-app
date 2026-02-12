@@ -14,7 +14,6 @@
         .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .recharts-responsive-container { min-height: 300px; }
-        /* Fix para evitar flash de conteúdo não estilizado */
         [v-cloak] { display: none; }
     </style>
 <script type="importmap">
@@ -34,16 +33,13 @@
 
     <script type="module">
         /**
-         * FIX DEFINITIVO ERRO #130 e #31:
-         * 1. Removemos o importmap para evitar conflito de versões de React (18 vs 19).
-         * 2. Todas as deps agora forçam o uso do React 18.3.1.
+         * ESTABILIZAÇÃO REACT 18:
+         * Importações diretas sem importmap para evitar conflitos de versão (Erro #130/31).
          */
         import React, { useState, useEffect, useMemo, useCallback } from 'https://esm.sh/react@18.3.1';
         import ReactDOM from 'https://esm.sh/react-dom@18.3.1/client';
         import htm from 'https://esm.sh/htm@3.1.1';
         import { GoogleGenAI } from 'https://esm.sh/@google/genai@1.41.0';
-        
-        // Importando ícones e gráficos com a mesma dependência de React
         import * as Lucide from 'https://esm.sh/lucide-react@0.460.0?deps=react@18.3.1';
         import { 
             PieChart, Pie, Cell, ResponsiveContainer, 
@@ -179,17 +175,19 @@
             const saveData = useCallback(async (dataToSave) => {
                 setSyncStatus('syncing');
                 try {
+                    // Garantir que enviamos o array, mesmo que vazio
+                    const payload = Array.isArray(dataToSave) ? dataToSave : [];
                     const res = await fetch(API_URL, {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json',
                             'X-Master-Key': MASTER_KEY
                         },
-                        body: JSON.stringify(dataToSave)
+                        body: JSON.stringify(payload)
                     });
                     if (res.ok) {
                         setSyncStatus('synced');
-                        localStorage.setItem('dan_paty_financas_v1', JSON.stringify(dataToSave));
+                        localStorage.setItem('dan_paty_financas_v1', JSON.stringify(payload));
                     } else {
                         throw new Error("Falha no save");
                     }
@@ -239,10 +237,18 @@
             };
 
             const handleDelete = async (id) => {
-                if (confirm("Deseja mesmo excluir?")) {
+                if (confirm("Deseja mesmo excluir este registro?")) {
                     const newList = transactions.filter(t => t.id !== id);
                     setTransactions(newList);
                     await saveData(newList);
+                }
+            };
+
+            const handleClearAll = async () => {
+                if (confirm("ATENÇÃO: Deseja apagar TODOS os lançamentos? Esta ação não pode ser desfeita.")) {
+                    setTransactions([]);
+                    setAiAdvice(null);
+                    await saveData([]);
                 }
             };
 
@@ -283,10 +289,10 @@
                                 </div>
                             </div>
                             <div className="flex items-center gap-3">
-                                <button onClick=${() => setIsFormOpen(true)} className="hidden sm:flex items-center gap-2 bg-white/10 hover:bg-white/20 px-5 py-2 rounded-xl font-bold transition-all">
+                                <button onClick=${() => setIsFormOpen(true)} className="hidden sm:flex items-center gap-2 bg-white/10 hover:bg-white/20 px-5 py-2 rounded-xl font-bold transition-all active:scale-95">
                                     <${Lucide.Plus} size=${18} /> Novo
                                 </button>
-                                <button onClick=${loadData} title="Atualizar dados" className="p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-all">
+                                <button onClick=${loadData} title="Atualizar dados" className="p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-all active:rotate-180">
                                     <${Lucide.RefreshCw} size=${18} className=${syncStatus === 'syncing' ? 'animate-spin' : ''} />
                                 </button>
                             </div>
@@ -294,6 +300,7 @@
                     </header>
 
                     <main className="container mx-auto px-4 py-8 space-y-8 max-w-6xl">
+                        <!-- IA Advisor Hero -->
                         <div className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-slate-900 rounded-[2.5rem] p-8 lg:p-12 text-white shadow-2xl relative overflow-hidden group">
                             <div className="absolute -top-24 -right-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none transition-all duration-1000"></div>
                             <div className="relative z-10">
@@ -310,8 +317,8 @@
                                 ` : html`
                                     <div className="max-w-xl">
                                         <h2 className="text-4xl lg:text-5xl font-black mb-4 leading-tight">Finanças Inteligentes, Dan & Paty.</h2>
-                                        <p className="text-indigo-100/70 mb-8 text-lg leading-relaxed">Nossa IA analisa onde vocês podem economizar de verdade.</p>
-                                        <button onClick=${getAdvice} disabled=${loadingAdvice || transactions.length === 0} className="bg-white text-indigo-900 px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-xl hover:scale-105 transition-all disabled:opacity-40">
+                                        <p className="text-indigo-100/70 mb-8 text-lg leading-relaxed">Analise seus gastos e descubra onde economizar de verdade.</p>
+                                        <button onClick=${getAdvice} disabled=${loadingAdvice || transactions.length === 0} className="bg-white text-indigo-900 px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-xl hover:scale-105 transition-all active:scale-95 disabled:opacity-40">
                                             ${loadingAdvice ? html`<${Lucide.Loader2} className="animate-spin" size=${22} />` : html`<${Lucide.BrainCircuit} size=${22} />`}
                                             Analisar Gastos com IA
                                         </button>
@@ -320,12 +327,14 @@
                             </div>
                         </div>
 
+                        <!-- Cards de Resumo -->
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <${Card} title="Saldo Atual" value=${formatCurrency(summary.balance)} iconName="Wallet" colorClass="bg-indigo-50" textColor=${summary.balance >= 0 ? 'text-slate-800' : 'text-rose-600'} />
                             <${Card} title="Receitas" value=${formatCurrency(summary.income)} iconName="TrendingUp" colorClass="bg-emerald-50" textColor="text-emerald-600" />
                             <${Card} title="Despesas" value=${formatCurrency(summary.expenses)} iconName="TrendingDown" colorClass="bg-rose-50" textColor="text-rose-600" />
                         </div>
 
+                        <!-- Seção de Gráficos -->
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                             <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
                                 <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-2">
@@ -361,15 +370,23 @@
                                                 <${Bar} dataKey="despesa" fill="#ef4444" radius=${[6, 6, 0, 0]} />
                                             <//>
                                         <//>
-                                    ` : html`<div className="h-full flex items-center justify-center text-slate-300 italic">Aguardando transações...</div>`}
+                                    ` : html`<div className="h-full flex items-center justify-center text-slate-300 italic">Aguardando lançamentos...</div>`}
                                 </div>
                             </div>
                         </div>
 
+                        <!-- Histórico de Transações -->
                         <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
                             <div className="px-8 py-6 border-b border-slate-50 flex justify-between items-center bg-slate-50/40">
                                 <h3 className="text-xl font-black text-slate-800">Histórico</h3>
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">${transactions.length} registros</span>
+                                <div className="flex items-center gap-4">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">${transactions.length} registros</span>
+                                    ${transactions.length > 0 && html`
+                                        <button onClick=${handleClearAll} className="flex items-center gap-1.5 text-rose-500 hover:text-rose-700 text-[10px] font-black uppercase tracking-wider transition-colors">
+                                            <${Lucide.Eraser} size=${14} /> Limpar Tudo
+                                        </button>
+                                    `}
+                                </div>
                             </div>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left border-collapse">
@@ -383,7 +400,7 @@
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
-                                        ${transactions.length === 0 ? html`<tr><td colSpan="5" className="px-8 py-16 text-center text-slate-300 italic">Nenhum registro.</td></tr>` : 
+                                        ${transactions.length === 0 ? html`<tr><td colSpan="5" className="px-8 py-16 text-center text-slate-300 italic font-medium">Nenhum registro encontrado.</td></tr>` : 
                                         [...transactions].sort((a,b) => new Date(b.date) - new Date(a.date)).map(t => html`
                                             <tr key=${t.id} className="hover:bg-slate-50/50 transition-colors group">
                                                 <td className="px-8 py-5 text-sm text-slate-500 font-medium">${new Date(t.date).toLocaleDateString('pt-BR')}</td>
@@ -407,7 +424,8 @@
                         </div>
                     </main>
 
-                    <button onClick=${() => setIsFormOpen(true)} className="sm:hidden fixed bottom-8 right-8 w-16 h-16 bg-indigo-600 text-white rounded-2xl shadow-2xl flex items-center justify-center z-50 transition-all active:scale-95">
+                    <!-- Botão Flutuante Mobile -->
+                    <button onClick=${() => setIsFormOpen(true)} className="sm:hidden fixed bottom-8 right-8 w-16 h-16 bg-indigo-600 text-white rounded-2xl shadow-2xl flex items-center justify-center z-50 transition-all active:scale-95 shadow-indigo-300">
                         <${Lucide.Plus} size=${32} />
                     </button>
 
