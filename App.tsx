@@ -15,7 +15,7 @@ const App: React.FC = () => {
 
   // Load from local storage on mount
   useEffect(() => {
-    const saved = localStorage.getItem('financas_pro_transactions');
+    const saved = localStorage.getItem('dan_paty_financas_v1');
     if (saved) {
       try {
         setTransactions(JSON.parse(saved));
@@ -27,7 +27,7 @@ const App: React.FC = () => {
 
   // Save to local storage when transactions change
   useEffect(() => {
-    localStorage.setItem('financas_pro_transactions', JSON.stringify(transactions));
+    localStorage.setItem('dan_paty_financas_v1', JSON.stringify(transactions));
   }, [transactions]);
 
   const addTransaction = (newT: Omit<Transaction, 'id'>) => {
@@ -58,7 +58,7 @@ const App: React.FC = () => {
             <div className="bg-white p-1.5 rounded-lg shadow-sm">
               <Sparkles className="text-indigo-600" size={24} />
             </div>
-            <h1 className="text-xl font-bold tracking-tight">Finanças Pró</h1>
+            <h1 className="text-xl font-bold tracking-tight">Dan & Paty Finanças</h1>
           </div>
           <button 
             onClick={() => setIsFormOpen(true)}
@@ -100,9 +100,9 @@ const App: React.FC = () => {
               </div>
             ) : (
               <div>
-                <h2 className="text-3xl font-bold mb-3">Sua saúde financeira, turbinada por IA.</h2>
+                <h2 className="text-3xl font-bold mb-3">Sua saúde financeira, Dan & Paty.</h2>
                 <p className="text-indigo-200 mb-6">
-                  Nossa inteligência artificial analisa seus gastos e sugere onde você pode economizar de verdade.
+                  Nossa inteligência artificial analisa seus gastos e sugere onde vocês podem economizar de verdade.
                 </p>
                 <button 
                   onClick={handleGetAdvice}
