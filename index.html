@@ -8,12 +8,17 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
-        .chart-container .recharts-responsive-container { min-height: 300px; }
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; overflow-x: hidden; }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        /* Recharts container fix */
+        .recharts-responsive-container { min-height: 300px; }
     </style>
 <script type="importmap">
 {
@@ -31,19 +36,26 @@
     <div id="root"></div>
 
     <script type="module">
-        import { h, Component, render } from 'https://esm.sh/preact';
-        import { useState, useEffect, useMemo } from 'https://esm.sh/preact/hooks';
-        import htm from 'https://esm.sh/htm';
-        import { GoogleGenAI } from 'https://esm.sh/@google/genai';
-        import * as Lucide from 'https://esm.sh/lucide-react';
+        /**
+         * CRITICAL FIX: To avoid "Minified React Error #31" (Symbol mismatch),
+         * we must ensure every library uses the EXACT same React instance.
+         * We achieve this by pinning the version and using '?deps=react@18.3.1' on esm.sh imports.
+         */
+        import React, { useState, useEffect, useMemo } from 'https://esm.sh/react@18.3.1';
+        import ReactDOM from 'https://esm.sh/react-dom@18.3.1/client';
+        import htm from 'https://esm.sh/htm@3.1.1';
+        import { GoogleGenAI } from 'https://esm.sh/@google/genai@1.41.0';
+        
+        // Force external libraries to use the main React instance we just imported
+        import * as Lucide from 'https://esm.sh/lucide-react@0.460.0?deps=react@18.3.1';
         import { 
             PieChart, Pie, Cell, ResponsiveContainer, 
             BarChart, Bar, XAxis, YAxis, Tooltip, Legend 
-        } from 'https://esm.sh/recharts';
+        } from 'https://esm.sh/recharts@2.13.0?deps=react@18.3.1';
 
-        const html = htm.bind(h);
+        const html = htm.bind(React.createElement);
 
-        // --- Configurações e Tipos ---
+        // --- Configurações ---
         const CATEGORIES = {
             income: ['Salário', 'Investimentos', 'Presente', 'Outros'],
             expense: ['Alimentação', 'Transporte', 'Moradia', 'Lazer', 'Saúde', 'Educação', 'Outros']
@@ -51,19 +63,25 @@
 
         const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
+        const formatCurrency = (val) => 
+            new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
+
         // --- Componentes ---
 
-        const Card = ({ title, value, icon: Icon, colorClass, textColor }) => html`
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
-                <div class="p-3 ${colorClass} rounded-xl">
-                    <${Icon} class="${textColor}" size=${24} />
+        const Card = ({ title, value, iconName, colorClass, textColor }) => {
+            const Icon = Lucide[iconName] || Lucide.Package;
+            return html`
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4 transition-transform hover:scale-[1.02]">
+                    <div className=${`p-3 ${colorClass} rounded-xl`}>
+                        <${Icon} className=${textColor} size=${24} />
+                    </div>
+                    <div>
+                        <p className="text-sm font-medium text-slate-500">${title}</p>
+                        <p className=${`text-2xl font-bold ${textColor}`}>${value}</p>
+                    </div>
                 </div>
-                <div>
-                    <p class="text-sm font-medium text-slate-500">${title}</p>
-                    <p class="text-2xl font-bold ${textColor}">${value}</p>
-                </div>
-            </div>
-        `;
+            `;
+        };
 
         const TransactionForm = ({ onAdd, onClose }) => {
             const [description, setDescription] = useState('');
@@ -80,47 +98,47 @@
             };
 
             return html`
-                <div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-                    <div class="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-fade-in">
-                        <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                            <h2 class="text-xl font-bold text-slate-800">Nova Transação</h2>
-                            <button onClick=${onClose} class="p-2 hover:bg-slate-200 rounded-full transition-colors">
-                                <${Lucide.X} size=${20} class="text-slate-500" />
+                <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50 animate-fade-in backdrop-blur-sm">
+                    <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                            <h2 className="text-xl font-bold text-slate-800">Nova Transação</h2>
+                            <button onClick=${onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                                <${Lucide.X} size=${20} className="text-slate-500" />
                             </button>
                         </div>
-                        <form onSubmit=${handleSubmit} class="p-6 space-y-4">
-                            <div class="flex p-1 bg-slate-100 rounded-lg">
+                        <form onSubmit=${handleSubmit} className="p-6 space-y-5">
+                            <div className="flex p-1 bg-slate-100 rounded-xl">
                                 <button type="button" onClick=${() => { setType('income'); setCategory(CATEGORIES.income[0]); }}
-                                    class="flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${type === 'income' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}">
+                                    className=${`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${type === 'income' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}`}>
                                     Receita
                                 </button>
                                 <button type="button" onClick=${() => { setType('expense'); setCategory(CATEGORIES.expense[0]); }}
-                                    class="flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${type === 'expense' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500'}">
+                                    className=${`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${type === 'expense' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500'}`}>
                                     Despesa
                                 </button>
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-slate-700 mb-1">Descrição</label>
-                                <input type="text" required value=${description} onInput=${e => setDescription(e.target.value)} class="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Ex: Mercado" />
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Descrição</label>
+                                <input type="text" required value=${description} onChange=${e => setDescription(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all" placeholder="Ex: Aluguel, Mercado" />
                             </div>
-                            <div class="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-sm font-medium text-slate-700 mb-1">Valor (R$)</label>
-                                    <input type="number" step="0.01" required value=${amount} onInput=${e => setAmount(e.target.value)} class="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="0,00" />
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Valor (R$)</label>
+                                    <input type="number" step="0.01" required value=${amount} onChange=${e => setAmount(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all" placeholder="0,00" />
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-medium text-slate-700 mb-1">Data</label>
-                                    <input type="date" required value=${date} onInput=${e => setDate(e.target.value)} class="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Data</label>
+                                    <input type="date" required value=${date} onChange=${e => setDate(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
                                 </div>
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-slate-700 mb-1">Categoria</label>
-                                <select value=${category} onChange=${e => setCategory(e.target.value)} class="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
-                                    ${(type === 'income' ? CATEGORIES.income : CATEGORIES.expense).map(cat => html`<option value=${cat}>${cat}</option>`)}
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Categoria</label>
+                                <select value=${category} onChange=${e => setCategory(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none bg-white transition-all cursor-pointer">
+                                    ${(type === 'income' ? CATEGORIES.income : CATEGORIES.expense).map(cat => html`<option key=${cat} value=${cat}>${cat}</option>`)}
                                 </select>
                             </div>
-                            <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-lg transition-all flex items-center justify-center gap-2 mt-4">
-                                <${Lucide.PlusCircle} size=${20} /> Adicionar
+                            <button type="submit" className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 mt-2 active:scale-95">
+                                <${Lucide.PlusCircle} size=${20} /> Adicionar Transação
                             </button>
                         </form>
                     </div>
@@ -135,12 +153,14 @@
             const [loadingAdvice, setLoadingAdvice] = useState(false);
 
             useEffect(() => {
-                const saved = localStorage.getItem('financas_pro_data');
-                if (saved) setTransactions(JSON.parse(saved));
+                const saved = localStorage.getItem('financas_pro_unified_v4');
+                if (saved) {
+                    try { setTransactions(JSON.parse(saved)); } catch(e) { console.error("Storage load error", e); }
+                }
             }, []);
 
             useEffect(() => {
-                localStorage.setItem('financas_pro_data', JSON.stringify(transactions));
+                localStorage.setItem('financas_pro_unified_v4', JSON.stringify(transactions));
             }, [transactions]);
 
             const summary = useMemo(() => {
@@ -152,23 +172,34 @@
             }, [transactions]);
 
             const categoryData = useMemo(() => {
-                const data = transactions.filter(t => t.type === 'expense').reduce((acc, t) => {
-                    const idx = acc.findIndex(i => i.name === t.category);
-                    if (idx > -1) acc[idx].value += t.amount;
-                    else acc.push({ name: t.category, value: t.amount });
-                    return acc;
-                }, []);
-                return data;
+                const dataMap = transactions
+                    .filter(t => t.type === 'expense')
+                    .reduce((acc, t) => {
+                        acc[t.category] = (acc[t.category] || 0) + t.amount;
+                        return acc;
+                    }, {});
+                return Object.entries(dataMap).map(([name, value]) => ({ name, value }));
             }, [transactions]);
 
-            const formatCurrency = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+            const monthlyData = useMemo(() => {
+                const months = transactions.reduce((acc, t) => {
+                    const m = new Date(t.date).toLocaleDateString('pt-BR', { month: 'short' });
+                    if (!acc[m]) acc[m] = { name: m, receita: 0, despesa: 0 };
+                    if (t.type === 'income') acc[m].receita += t.amount;
+                    else acc[m].despesa += t.amount;
+                    return acc;
+                }, {});
+                return Object.values(months).slice(-6);
+            }, [transactions]);
 
             const handleAdd = (t) => {
-                setTransactions([...transactions, { ...t, id: Date.now().toString() }]);
+                setTransactions(prev => [...prev, { ...t, id: Math.random().toString(36).substr(2, 9) }]);
             };
 
             const handleDelete = (id) => {
-                setTransactions(transactions.filter(t => t.id !== id));
+                if (confirm("Excluir esta transação?")) {
+                    setTransactions(prev => prev.filter(t => t.id !== id));
+                }
             };
 
             const getAdvice = async () => {
@@ -176,112 +207,162 @@
                 setLoadingAdvice(true);
                 try {
                     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-                    const context = transactions.map(t => `${t.date}: ${t.description} - R$ ${t.amount} (${t.type})`).join('\n');
+                    const context = transactions.slice(-15).map(t => `${t.date}: ${t.description} - R$ ${t.amount} (${t.type})`).join('\n');
                     const response = await ai.models.generateContent({
                         model: 'gemini-3-flash-preview',
-                        contents: `Analise estes gastos e dê 3 dicas curtas de economia: \n${context}`,
-                        config: { systemInstruction: "Você é um consultor financeiro brasileiro." }
+                        contents: `Analise meu histórico e forneça 3 dicas práticas em português:\n${context}`,
+                        config: { systemInstruction: "Você é um mentor financeiro sênior brasileiro prático e motivador." }
                     });
                     setAiAdvice(response.text);
                 } catch (e) {
-                    console.error(e);
-                    setAiAdvice("Não foi possível carregar os conselhos agora.");
+                    console.error("AI Error:", e);
+                    setAiAdvice("Continue registrando seus gastos para que eu possa analisar melhor seu perfil!");
                 }
                 setLoadingAdvice(false);
             };
 
             return html`
-                <div class="min-h-screen">
-                    <header class="bg-indigo-600 text-white shadow-lg sticky top-0 z-40">
-                        <div class="container mx-auto px-4 h-16 flex items-center justify-between">
-                            <div class="flex items-center gap-2">
-                                <div class="bg-white p-1.5 rounded-lg shadow-sm">
-                                    <${Lucide.Sparkles} class="text-indigo-600" size=${24} />
+                <div className="min-h-screen pb-24 lg:pb-12 bg-slate-50">
+                    <header className="bg-indigo-600 text-white shadow-lg sticky top-0 z-40">
+                        <div className="container mx-auto px-4 h-16 flex items-center justify-between max-w-6xl">
+                            <div className="flex items-center gap-2.5">
+                                <div className="bg-white p-1.5 rounded-xl">
+                                    <${Lucide.Sparkles} className="text-indigo-600" size=${24} />
                                 </div>
-                                <h1 class="text-xl font-bold">Finanças Pró</h1>
+                                <h1 className="text-xl font-black tracking-tight">Finanças Pró</h1>
                             </div>
-                            <button onClick=${() => setIsFormOpen(true)} class="hidden sm:flex items-center gap-2 bg-indigo-500 hover:bg-indigo-400 px-4 py-2 rounded-lg font-semibold transition-all shadow-sm">
-                                <${Lucide.Plus} size=${20} /> Nova Transação
+                            <button onClick=${() => setIsFormOpen(true)} className="hidden sm:flex items-center gap-2 bg-white/10 hover:bg-white/20 px-5 py-2 rounded-xl font-bold transition-all">
+                                <${Lucide.Plus} size=${18} /> Novo Registro
                             </button>
                         </div>
                     </header>
 
-                    <main class="container mx-auto px-4 py-8 space-y-8">
-                        <div class="bg-gradient-to-br from-indigo-900 to-indigo-800 rounded-3xl p-6 lg:p-8 text-white shadow-xl relative overflow-hidden">
-                            <div class="relative z-10 max-w-2xl">
-                                <span class="px-3 py-1 bg-white/20 rounded-full text-xs font-bold uppercase mb-4 inline-block">IA Advisor</span>
+                    <main className="container mx-auto px-4 py-8 space-y-8 max-w-6xl">
+                        <!-- AI Hero Section -->
+                        <div className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-slate-900 rounded-[2.5rem] p-8 lg:p-12 text-white shadow-2xl relative overflow-hidden group">
+                            <div className="absolute -top-24 -right-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none group-hover:bg-indigo-500/20 transition-all duration-1000"></div>
+                            <div className="relative z-10">
+                                <div className="flex items-center gap-2 mb-6">
+                                    <span className="px-4 py-1.5 bg-indigo-500/30 border border-indigo-400/30 rounded-full text-[10px] font-black uppercase tracking-[0.2em] backdrop-blur-md">IA Advisor</span>
+                                </div>
+                                
                                 ${aiAdvice ? html`
-                                    <div class="animate-fade-in">
-                                        <p class="text-indigo-100 text-lg leading-relaxed whitespace-pre-line">${aiAdvice}</p>
-                                        <button onClick=${getAdvice} class="mt-4 text-indigo-300 hover:text-white flex items-center gap-2 text-sm">
-                                            <${Lucide.RefreshCw} size=${14} class="${loadingAdvice ? 'animate-spin' : ''}" /> Atualizar
+                                    <div className="animate-fade-in space-y-6">
+                                        <p className="text-indigo-50 text-xl lg:text-2xl leading-relaxed font-medium italic">"${aiAdvice}"</p>
+                                        <button onClick=${getAdvice} className="flex items-center gap-2 text-indigo-300 hover:text-white transition-colors text-sm font-bold">
+                                            <${Lucide.RefreshCcw} size=${16} className=${loadingAdvice ? 'animate-spin' : ''} /> Atualizar análise
                                         </button>
                                     </div>
                                 ` : html`
-                                    <div>
-                                        <h2 class="text-3xl font-bold mb-2">Seu assistente financeiro inteligente.</h2>
-                                        <p class="text-indigo-200 mb-6">Analise seus padrões de consumo com inteligência artificial.</p>
-                                        <button onClick=${getAdvice} disabled=${loadingAdvice || transactions.length === 0} class="bg-white text-indigo-900 px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg disabled:opacity-50">
-                                            ${loadingAdvice ? html`<${Lucide.Loader2} class="animate-spin" size=${20} />` : html`<${Lucide.BrainCircuit} size=${20} />`}
-                                            Consultar IA
+                                    <div className="max-w-xl">
+                                        <h2 className="text-4xl lg:text-5xl font-black mb-4 leading-tight">Sua saúde financeira, inteligente.</h2>
+                                        <p className="text-indigo-100/70 mb-8 text-lg font-medium leading-relaxed">Nossa IA analisa seus padrões e sugere onde você pode economizar de verdade.</p>
+                                        <button onClick=${getAdvice} disabled=${loadingAdvice || transactions.length === 0} className="bg-white text-indigo-900 px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-xl hover:scale-105 transition-all active:scale-95 disabled:opacity-40">
+                                            ${loadingAdvice ? html`<${Lucide.Loader2} className="animate-spin" size=${22} />` : html`<${Lucide.BrainCircuit} size=${22} />`}
+                                            Analisar Gastos com IA
                                         </button>
+                                        ${transactions.length === 0 && html`<p className="mt-4 text-xs text-indigo-300/60 font-medium">Cadastre transações para habilitar os insights.</p>`}
                                     </div>
                                 `}
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <${Card} title="Saldo Total" value=${formatCurrency(summary.balance)} icon=${Lucide.Wallet} colorClass="bg-indigo-50" textColor=${summary.balance >= 0 ? 'text-slate-800' : 'text-rose-600'} />
-                            <${Card} title="Receitas" value=${formatCurrency(summary.income)} icon=${Lucide.TrendingUp} colorClass="bg-emerald-50" textColor="text-emerald-600" />
-                            <${Card} title="Despesas" value=${formatCurrency(summary.expenses)} icon=${Lucide.TrendingDown} colorClass="bg-rose-50" textColor="text-rose-600" />
+                        <!-- Summary Cards -->
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <${Card} title="Saldo Atual" value=${formatCurrency(summary.balance)} iconName="Wallet" colorClass="bg-indigo-50" textColor=${summary.balance >= 0 ? 'text-slate-800' : 'text-rose-600'} />
+                            <${Card} title="Receitas" value=${formatCurrency(summary.income)} iconName="TrendingUp" colorClass="bg-emerald-50" textColor="text-emerald-600" />
+                            <${Card} title="Despesas" value=${formatCurrency(summary.expenses)} iconName="TrendingDown" colorClass="bg-rose-50" textColor="text-rose-600" />
                         </div>
 
-                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                                <h3 class="text-lg font-bold text-slate-800 mb-4">Gastos por Categoria</h3>
-                                <div class="h-[300px] chart-container">
+                        <!-- Main Charts Section -->
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+                                <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-2">
+                                    <${Lucide.PieChart} className="text-indigo-500" size=${22} /> Categorias de Gastos
+                                </h3>
+                                <div className="h-[320px]">
                                     ${categoryData.length > 0 ? html`
                                         <${ResponsiveContainer} width="100%" height="100%">
                                             <${PieChart}>
-                                                <${Pie} data=${categoryData} cx="50%" cy="50%" innerRadius=${60} outerRadius=${80} paddingAngle=${5} dataKey="value">
-                                                    ${categoryData.map((_, i) => html`<${Cell} fill=${COLORS[i % COLORS.length]} />`)}
+                                                <${Pie} data=${categoryData} cx="50%" cy="50%" innerRadius=${70} outerRadius=${100} paddingAngle=${8} dataKey="value" stroke="none">
+                                                    ${categoryData.map((_, i) => html`<${Cell} key=${`cell-${i}`} fill=${COLORS[i % COLORS.length]} />`)}
                                                 <//>
-                                                <${Tooltip} formatter=${v => formatCurrency(v)} />
-                                                <${Legend} />
+                                                <${Tooltip} cursor=${false} contentStyle=${{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} formatter=${v => formatCurrency(v)} />
+                                                <${Legend} iconType="circle" />
                                             <//>
                                         <//>
-                                    ` : html`<div class="h-full flex items-center justify-center text-slate-400 italic">Sem dados de despesas</div>`}
+                                    ` : html`<div className="h-full flex items-center justify-center text-slate-300 italic font-medium">Sem dados de gastos</div>`}
                                 </div>
                             </div>
-                            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                                <h3 class="text-lg font-bold text-slate-800 mb-4">Últimas Transações</h3>
-                                <div class="space-y-3 overflow-y-auto max-h-[300px]">
-                                    ${transactions.length === 0 ? html`<p class="text-center text-slate-400 py-8">Nenhuma transação</p>` : 
-                                    [...transactions].reverse().map(t => html`
-                                        <div class="flex items-center justify-between p-3 hover:bg-slate-50 rounded-xl transition-colors group">
-                                            <div class="flex items-center gap-3">
-                                                <div class="p-2 bg-slate-100 rounded-lg text-slate-500"><${Lucide.Package} size=${16} /></div>
-                                                <div>
-                                                    <p class="font-medium text-slate-800">${t.description}</p>
-                                                    <p class="text-xs text-slate-400">${t.date} • ${t.category}</p>
-                                                </div>
-                                            </div>
-                                            <div class="flex items-center gap-4">
-                                                <span class="font-bold text-sm ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}">
-                                                    ${t.type === 'income' ? '+' : '-'} ${formatCurrency(t.amount)}
-                                                </span>
-                                                <button onClick=${() => handleDelete(t.id)} class="p-1 text-slate-300 hover:text-rose-600 transition-colors">
-                                                    <${Lucide.Trash2} size=${16} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    `)}
+                            
+                            <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+                                <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-2">
+                                    <${Lucide.BarChart3} className="text-indigo-500" size=${22} /> Histórico Mensal
+                                </h3>
+                                <div className="h-[320px]">
+                                    ${monthlyData.length > 0 ? html`
+                                        <${ResponsiveContainer} width="100%" height="100%">
+                                            <${BarChart} data=${monthlyData}>
+                                                <${XAxis} dataKey="name" axisLine=${false} tickLine=${false} fontSize=${12} tick=${{fill: '#94a3b8'}} dy=${10} />
+                                                <${YAxis} hide />
+                                                <${Tooltip} cursor=${{fill: '#f8fafc'}} contentStyle=${{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} formatter=${v => formatCurrency(v)} />
+                                                <${Bar} dataKey="receita" fill="#10b981" radius=${[6, 6, 0, 0]} />
+                                                <${Bar} dataKey="despesa" fill="#ef4444" radius=${[6, 6, 0, 0]} />
+                                            <//>
+                                        <//>
+                                    ` : html`<div className="h-full flex items-center justify-center text-slate-300 italic font-medium">Aguardando mais transações</div>`}
                                 </div>
+                            </div>
+                        </div>
+
+                        <!-- History List -->
+                        <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
+                            <div className="px-8 py-6 border-b border-slate-50 flex justify-between items-center bg-slate-50/40">
+                                <h3 className="text-xl font-black text-slate-800">Histórico de Transações</h3>
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">${transactions.length} registros</span>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-50">
+                                            <th className="px-8 py-5">Data</th>
+                                            <th className="px-8 py-5">Descrição</th>
+                                            <th className="px-8 py-5">Categoria</th>
+                                            <th className="px-8 py-5">Valor</th>
+                                            <th className="px-8 py-5 text-right">Ação</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        ${transactions.length === 0 ? html`
+                                            <tr><td colSpan="5" className="px-8 py-16 text-center text-slate-300 font-medium italic">Nenhuma transação registrada ainda.</td></tr>
+                                        ` : 
+                                        [...transactions].sort((a,b) => new Date(b.date) - new Date(a.date)).map(t => html`
+                                            <tr key=${t.id} className="hover:bg-slate-50/50 transition-colors group">
+                                                <td className="px-8 py-5 text-sm text-slate-500 font-medium">${new Date(t.date).toLocaleDateString('pt-BR')}</td>
+                                                <td className="px-8 py-5"><p className="font-bold text-slate-800 text-sm">${t.description}</p></td>
+                                                <td className="px-8 py-5">
+                                                    <span className="px-3 py-1 rounded-full text-[10px] font-black bg-slate-100 text-slate-600 border border-slate-200 uppercase tracking-wider">
+                                                        ${t.category}
+                                                    </span>
+                                                </td>
+                                                <td className=${`px-8 py-5 font-black text-sm ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                    ${t.type === 'income' ? '+' : '-'} ${formatCurrency(t.amount)}
+                                                </td>
+                                                <td className="px-8 py-5 text-right">
+                                                    <button onClick=${() => handleDelete(t.id)} className="p-2.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100">
+                                                        <${Lucide.Trash2} size=${18} />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        `)}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </main>
 
-                    <button onClick=${() => setIsFormOpen(true)} class="sm:hidden fixed bottom-6 right-6 w-16 h-16 bg-indigo-600 text-white rounded-full shadow-2xl flex items-center justify-center z-50">
+                    <!-- Mobile Add FAB -->
+                    <button onClick=${() => setIsFormOpen(true)} className="sm:hidden fixed bottom-8 right-8 w-16 h-16 bg-indigo-600 text-white rounded-2xl shadow-2xl flex items-center justify-center z-50 active:scale-90 transition-all hover:rotate-90">
                         <${Lucide.Plus} size=${32} />
                     </button>
 
@@ -290,7 +371,8 @@
             `;
         };
 
-        render(html`<${App} />`, document.getElementById('root'));
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(html`<${App} />`);
     </script>
 </body>
 </html>
