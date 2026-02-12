@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Finanças Pró - IA</title>
+    <title>Dan & Paty Finanças</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -153,14 +153,14 @@
             const [loadingAdvice, setLoadingAdvice] = useState(false);
 
             useEffect(() => {
-                const saved = localStorage.getItem('financas_pro_unified_v4');
+                const saved = localStorage.getItem('dan_paty_financas_v1');
                 if (saved) {
                     try { setTransactions(JSON.parse(saved)); } catch(e) { console.error("Storage load error", e); }
                 }
             }, []);
 
             useEffect(() => {
-                localStorage.setItem('financas_pro_unified_v4', JSON.stringify(transactions));
+                localStorage.setItem('dan_paty_financas_v1', JSON.stringify(transactions));
             }, [transactions]);
 
             const summary = useMemo(() => {
@@ -229,7 +229,7 @@
                                 <div className="bg-white p-1.5 rounded-xl">
                                     <${Lucide.Sparkles} className="text-indigo-600" size=${24} />
                                 </div>
-                                <h1 className="text-xl font-black tracking-tight">Finanças Pró</h1>
+                                <h1 className="text-xl font-black tracking-tight">Dan & Paty Finanças</h1>
                             </div>
                             <button onClick=${() => setIsFormOpen(true)} className="hidden sm:flex items-center gap-2 bg-white/10 hover:bg-white/20 px-5 py-2 rounded-xl font-bold transition-all">
                                 <${Lucide.Plus} size=${18} /> Novo Registro
@@ -255,8 +255,8 @@
                                     </div>
                                 ` : html`
                                     <div className="max-w-xl">
-                                        <h2 className="text-4xl lg:text-5xl font-black mb-4 leading-tight">Sua saúde financeira, inteligente.</h2>
-                                        <p className="text-indigo-100/70 mb-8 text-lg font-medium leading-relaxed">Nossa IA analisa seus padrões e sugere onde você pode economizar de verdade.</p>
+                                        <h2 className="text-4xl lg:text-5xl font-black mb-4 leading-tight">Suas finanças inteligentes, Dan & Paty.</h2>
+                                        <p className="text-indigo-100/70 mb-8 text-lg font-medium leading-relaxed">Nossa IA analisa seus padrões e sugere onde vocês podem economizar de verdade.</p>
                                         <button onClick=${getAdvice} disabled=${loadingAdvice || transactions.length === 0} className="bg-white text-indigo-900 px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-xl hover:scale-105 transition-all active:scale-95 disabled:opacity-40">
                                             ${loadingAdvice ? html`<${Lucide.Loader2} className="animate-spin" size=${22} />` : html`<${Lucide.BrainCircuit} size=${22} />`}
                                             Analisar Gastos com IA
