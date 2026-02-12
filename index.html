@@ -15,6 +15,7 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .recharts-responsive-container { min-height: 300px; }
         [v-cloak] { display: none; }
+        .month-picker-item.active { background-color: #4f46e5; color: white; }
     </style>
 <script type="importmap">
 {
@@ -153,6 +154,9 @@
             const [loadingAdvice, setLoadingAdvice] = useState(false);
             const [syncStatus, setSyncStatus] = useState('idle');
             const [isEditModeActive, setIsEditModeActive] = useState(false);
+            
+            // Estado para sincronização com o calendário
+            const [currentDate, setCurrentDate] = useState(new Date());
 
             const loadData = useCallback(async () => {
                 setSyncStatus('syncing');
@@ -196,31 +200,47 @@
 
             useEffect(() => { loadData(); }, [loadData]);
 
+            // Filtragem baseada no mês selecionado
+            const filteredTransactions = useMemo(() => {
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+                return transactions.filter(t => {
+                    const tDate = new Date(t.date);
+                    return tDate.getFullYear() === year && tDate.getMonth() === month;
+                });
+            }, [transactions, currentDate]);
+
             const summary = useMemo(() => {
-                return transactions.reduce((acc, t) => {
+                return filteredTransactions.reduce((acc, t) => {
                     if (t.type === 'income') { acc.income += t.amount; acc.balance += t.amount; }
                     else { acc.expenses += t.amount; acc.balance -= t.amount; }
                     return acc;
                 }, { balance: 0, income: 0, expenses: 0 });
-            }, [transactions]);
+            }, [filteredTransactions]);
 
             const categoryData = useMemo(() => {
-                const dataMap = transactions.filter(t => t.type === 'expense').reduce((acc, t) => {
+                const dataMap = filteredTransactions.filter(t => t.type === 'expense').reduce((acc, t) => {
                     acc[t.category] = (acc[t.category] || 0) + t.amount;
                     return acc;
                 }, {});
                 return Object.entries(dataMap).map(([name, value]) => ({ name, value }));
-            }, [transactions]);
+            }, [filteredTransactions]);
 
             const monthlyData = useMemo(() => {
                 const months = transactions.reduce((acc, t) => {
-                    const m = new Date(t.date).toLocaleDateString('pt-BR', { month: 'short' });
-                    if (!acc[m]) acc[m] = { name: m, receita: 0, despesa: 0 };
-                    if (t.type === 'income') acc[m].receita += t.amount;
-                    else acc[m].despesa += t.amount;
+                    const d = new Date(t.date);
+                    const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+                    const label = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+                    
+                    if (!acc[key]) acc[key] = { name: label, receita: 0, despesa: 0, date: d };
+                    if (t.type === 'income') acc[key].receita += t.amount;
+                    else acc[key].despesa += t.amount;
                     return acc;
                 }, {});
-                return Object.values(months).slice(-6);
+                
+                return Object.values(months)
+                    .sort((a, b) => a.date - b.date)
+                    .slice(-6);
             }, [transactions]);
 
             const handleSave = async (item) => {
@@ -245,28 +265,35 @@
             };
 
             const handleClearAll = async () => {
-                if (confirm("ATENÇÃO: Deseja apagar TODOS os lançamentos?")) {
+                if (confirm("ATENÇÃO: Deseja apagar TODOS os lançamentos registrados (de todos os meses)?")) {
                     setTransactions([]);
                     setAiAdvice(null);
                     await saveData([]);
                 }
             };
 
+            const changeMonth = (offset) => {
+                const newDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + offset, 1);
+                setCurrentDate(newDate);
+            };
+
             const getAdvice = async () => {
-                if (transactions.length === 0) return;
+                if (filteredTransactions.length === 0) return;
                 setLoadingAdvice(true);
                 try {
                     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-                    const context = transactions.slice(-15).map(t => `${t.date}: ${t.description} - R$ ${t.amount} (${t.type})`).join('\n');
+                    const context = filteredTransactions.map(t => `${t.date}: ${t.description} - R$ ${t.amount} (${t.type})`).join('\n');
                     const response = await ai.models.generateContent({
                         model: 'gemini-3-flash-preview',
-                        contents: `Analise o histórico do casal Dan & Paty e dê 3 conselhos financeiros curtos em português:\n${context}`,
-                        config: { systemInstruction: "Você é um mentor financeiro sênior brasileiro para casais." }
+                        contents: `Analise o fechamento do mês ${currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })} do casal Dan & Paty e dê 3 conselhos financeiros curtos em português:\n${context}`,
+                        config: { systemInstruction: "Você é um mentor financeiro sênior brasileiro para casais focando em fechamentos mensais." }
                     });
                     setAiAdvice(response.text);
-                } catch (e) { setAiAdvice("Adicione mais transações para análise!"); }
+                } catch (e) { setAiAdvice("Adicione transações a este mês para uma análise de fechamento!"); }
                 setLoadingAdvice(false);
             };
+
+            const monthName = currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
             return html`
                 <div className="min-h-screen pb-24 lg:pb-12 bg-slate-50">
@@ -277,12 +304,12 @@
                                 <div>
                                     <h1 className="text-xl font-black tracking-tight leading-none">Dan & Paty Finanças</h1>
                                     <div className="flex items-center gap-1 mt-1 text-[10px] font-bold opacity-80 uppercase tracking-widest">
-                                        ${syncStatus === 'synced' ? html`<${Lucide.Cloud} size=${12} className="text-emerald-300" /> Nuvem Ativa` : html`<${Lucide.Loader2} size=${10} className="animate-spin" /> Atualizando`}
+                                        ${syncStatus === 'synced' ? html`<${Lucide.Cloud} size=${12} className="text-emerald-300" /> Nuvem Ativa` : html`<${Lucide.Loader2} size=${10} className="animate-spin" /> Sincronizando`}
                                     </div>
                                 </div>
                             </div>
                             <div className="flex items-center gap-3">
-                                <button onClick=${() => { setEditingItem(null); setIsFormOpen(true); }} className="hidden sm:flex items-center gap-2 bg-white/10 hover:bg-white/20 px-5 py-2 rounded-xl font-bold transition-all">
+                                <button onClick=${() => { setEditingItem(null); setIsFormOpen(true); }} className="hidden sm:flex items-center gap-2 bg-white/10 hover:bg-white/20 px-5 py-2 rounded-xl font-bold transition-all active:scale-95">
                                     <${Lucide.Plus} size=${18} /> Novo
                                 </button>
                                 <button onClick=${loadData} className="p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-all"><${Lucide.RefreshCw} size=${18} /></button>
@@ -291,29 +318,102 @@
                     </header>
 
                     <main className="container mx-auto px-4 py-8 space-y-8 max-w-6xl">
+                        
+                        <!-- Seletor de Calendário / Mês -->
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
+                            <div className="flex items-center gap-4">
+                                <button onClick=${() => changeMonth(-1)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-indigo-600 transition-colors">
+                                    <${Lucide.ChevronLeft} size=${24} />
+                                </button>
+                                <div className="text-center min-w-[140px]">
+                                    <h2 className="text-lg font-black text-slate-800 capitalize">${monthName}</h2>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sincronizado</p>
+                                </div>
+                                <button onClick=${() => changeMonth(1)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-indigo-600 transition-colors">
+                                    <${Lucide.ChevronRight} size=${24} />
+                                </button>
+                            </div>
+                            
+                            <div className="flex items-center gap-3 overflow-x-auto pb-2 md:pb-0 no-scrollbar">
+                                <button onClick=${() => setCurrentDate(new Date())} className="px-4 py-2 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl text-xs font-bold transition-all whitespace-nowrap">
+                                    Ir para Hoje
+                                </button>
+                                <div className="h-6 w-px bg-slate-100 hidden md:block"></div>
+                                <div className="flex items-center gap-2 bg-indigo-50 px-4 py-2 rounded-xl">
+                                    <${Lucide.Calendar} size=${16} className="text-indigo-600" />
+                                    <span className="text-xs font-bold text-indigo-700 whitespace-nowrap">Fechamento Mensal</span>
+                                </div>
+                            </div>
+                        </div>
+
                         <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-[2.5rem] p-8 lg:p-12 text-white shadow-2xl relative overflow-hidden">
                             <div className="relative z-10">
-                                <span className="px-4 py-1.5 bg-indigo-500/30 border border-indigo-400/30 rounded-full text-[10px] font-black uppercase tracking-[0.2em] backdrop-blur-md">IA Advisor</span>
-                                ${aiAdvice ? html`<div className="mt-6 space-y-4"><p className="text-xl italic">"${aiAdvice}"</p></div>` : 
-                                html`<div className="mt-6"><h2 className="text-4xl font-black mb-4">Finanças Inteligentes, Dan & Paty.</h2>
-                                <button onClick=${getAdvice} className="bg-white text-indigo-900 px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-xl">
-                                    <${Lucide.BrainCircuit} size=${22} /> Analisar Gastos com IA
+                                <span className="px-4 py-1.5 bg-indigo-500/30 border border-indigo-400/30 rounded-full text-[10px] font-black uppercase tracking-[0.2em] backdrop-blur-md">IA Advisor • Fechamento</span>
+                                ${aiAdvice ? html`<div className="mt-6 space-y-4 animate-fade-in"><p className="text-xl italic leading-relaxed">"${aiAdvice}"</p></div>` : 
+                                html`<div className="mt-6"><h2 className="text-4xl font-black mb-4">Análise de ${monthName}</h2>
+                                <p className="text-indigo-100/70 mb-8 max-w-lg">Quer saber como foi o mês do casal? Nossa IA analisa o fechamento para vocês.</p>
+                                <button onClick=${getAdvice} disabled=${loadingAdvice || filteredTransactions.length === 0} className="bg-white text-indigo-900 px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-xl active:scale-95 disabled:opacity-40 transition-all">
+                                    <${Lucide.BrainCircuit} size=${22} /> ${loadingAdvice ? 'Analisando...' : 'Analisar Mês'}
                                 </button></div>`}
                             </div>
                         </div>
 
+                        <!-- Cards filtrados por mês -->
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <${Card} title="Saldo Atual" value=${formatCurrency(summary.balance)} iconName="Wallet" colorClass="bg-indigo-50" textColor="text-slate-800" />
-                            <${Card} title="Receitas" value=${formatCurrency(summary.income)} iconName="TrendingUp" colorClass="bg-emerald-50" textColor="text-emerald-600" />
-                            <${Card} title="Despesas" value=${formatCurrency(summary.expenses)} iconName="TrendingDown" colorClass="bg-rose-50" textColor="text-rose-600" />
+                            <${Card} title="Saldo Mensal" value=${formatCurrency(summary.balance)} iconName="Wallet" colorClass="bg-indigo-50" textColor="text-slate-800" />
+                            <${Card} title="Receitas do Mês" value=${formatCurrency(summary.income)} iconName="TrendingUp" colorClass="bg-emerald-50" textColor="text-emerald-600" />
+                            <${Card} title="Despesas do Mês" value=${formatCurrency(summary.expenses)} iconName="TrendingDown" colorClass="bg-rose-50" textColor="text-rose-600" />
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+                                <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-2">
+                                    <${Lucide.PieChart} className="text-indigo-500" size=${22} /> Categorias (${monthName})
+                                </h3>
+                                <div className="h-[320px]">
+                                    ${categoryData.length > 0 ? html`
+                                        <${ResponsiveContainer} width="100%" height="100%">
+                                            <${PieChart}>
+                                                <${Pie} data=${categoryData} cx="50%" cy="50%" innerRadius=${70} outerRadius=${100} paddingAngle=${8} dataKey="value" stroke="none">
+                                                    ${categoryData.map((_, i) => html`<${Cell} key=${`cell-${i}`} fill=${COLORS[i % COLORS.length]} />`)}
+                                                <//>
+                                                <${Tooltip} cursor=${false} contentStyle=${{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} formatter=${v => formatCurrency(v)} />
+                                                <${Legend} iconType="circle" />
+                                            <//>
+                                        <//>
+                                    ` : html`<div className="h-full flex items-center justify-center text-slate-300 italic">Sem gastos neste mês</div>`}
+                                </div>
+                            </div>
+                            
+                            <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+                                <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-2">
+                                    <${Lucide.BarChart3} className="text-indigo-500" size=${22} /> Tendência dos Meses
+                                </h3>
+                                <div className="h-[320px]">
+                                    ${monthlyData.length > 0 ? html`
+                                        <${ResponsiveContainer} width="100%" height="100%">
+                                            <${BarChart} data=${monthlyData}>
+                                                <${XAxis} dataKey="name" axisLine=${false} tickLine=${false} fontSize=${10} tick=${{fill: '#94a3b8'}} dy=${10} />
+                                                <${YAxis} hide />
+                                                <${Tooltip} cursor=${{fill: '#f8fafc'}} contentStyle=${{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} formatter=${v => formatCurrency(v)} />
+                                                <${Bar} dataKey="receita" fill="#10b981" radius=${[6, 6, 0, 0]} />
+                                                <${Bar} dataKey="despesa" fill="#ef4444" radius=${[6, 6, 0, 0]} />
+                                            <//>
+                                        <//>
+                                    ` : html`<div className="h-full flex items-center justify-center text-slate-300 italic">Aguardando mais meses...</div>`}
+                                </div>
+                            </div>
                         </div>
 
                         <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
-                            <div className="px-8 py-6 border-b border-slate-50 flex justify-between items-center bg-slate-50/40">
-                                <h3 className="text-xl font-black text-slate-800">Histórico</h3>
+                            <div className="px-8 py-6 border-b border-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/40">
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-800">Histórico de ${monthName}</h3>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">${filteredTransactions.length} lançamentos sincronizados</p>
+                                </div>
                                 <div className="flex items-center gap-4">
                                     <button onClick=${() => setIsEditModeActive(!isEditModeActive)} 
-                                        className=${`flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${isEditModeActive ? 'bg-indigo-600 text-white shadow-md' : 'text-indigo-600 hover:bg-indigo-50'}`}>
+                                        className=${`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${isEditModeActive ? 'bg-indigo-600 text-white shadow-md' : 'text-indigo-600 hover:bg-indigo-50'}`}>
                                         <${Lucide.Pencil} size=${14} /> Editar
                                     </button>
                                     <button onClick=${handleClearAll} className="flex items-center gap-1.5 text-rose-500 hover:text-rose-700 text-[10px] font-black uppercase tracking-wider transition-colors">
@@ -325,7 +425,7 @@
                                 <table className="w-full text-left">
                                     <thead>
                                         <tr className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b">
-                                            <th className="px-8 py-5">Data</th>
+                                            <th className="px-8 py-5">Dia</th>
                                             <th className="px-8 py-5">Descrição</th>
                                             <th className="px-8 py-5">Categoria</th>
                                             <th className="px-6 py-5">Valor</th>
@@ -333,17 +433,17 @@
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
-                                        ${transactions.length === 0 ? html`<tr><td colSpan="5" className="px-8 py-16 text-center text-slate-300 italic">Sem registros.</td></tr>` : 
-                                        [...transactions].sort((a,b) => new Date(b.date) - new Date(a.date)).map(t => html`
+                                        ${filteredTransactions.length === 0 ? html`<tr><td colSpan="5" className="px-8 py-16 text-center text-slate-300 italic">Nenhum lançamento em ${monthName}.</td></tr>` : 
+                                        [...filteredTransactions].sort((a,b) => new Date(b.date) - new Date(a.date)).map(t => html`
                                             <tr key=${t.id} className="hover:bg-slate-50/50 transition-colors group">
-                                                <td className="px-8 py-5 text-sm text-slate-500">${new Date(t.date).toLocaleDateString('pt-BR')}</td>
+                                                <td className="px-8 py-5 text-sm text-slate-500 font-bold">${new Date(t.date).getDate()}</td>
                                                 <td className="px-8 py-5 font-bold text-slate-800 text-sm">${t.description}</td>
                                                 <td className="px-8 py-5"><span className="px-3 py-1 rounded-full text-[10px] font-black bg-slate-100 text-slate-600 uppercase tracking-wider">${t.category}</span></td>
                                                 <td className=${`px-6 py-5 font-black text-sm ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>${formatCurrency(t.amount)}</td>
                                                 <td className="px-8 py-5 text-right">
                                                     <div className=${`flex items-center justify-end gap-2 transition-opacity ${isEditModeActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                                                        <button onClick=${() => setEditingItem(t)} className="p-2 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl"><${Lucide.Pencil} size=${18} /></button>
-                                                        <button onClick=${() => handleDelete(t.id)} className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl"><${Lucide.Trash2} size=${18} /></button>
+                                                        <button onClick=${() => setEditingItem(t)} title="Editar" className="p-2 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><${Lucide.Pencil} size=${18} /></button>
+                                                        <button onClick=${() => handleDelete(t.id)} title="Excluir" className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"><${Lucide.Trash2} size=${18} /></button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -354,7 +454,7 @@
                         </div>
                     </main>
 
-                    <button onClick=${() => { setEditingItem(null); setIsFormOpen(true); }} className="sm:hidden fixed bottom-8 right-8 w-16 h-16 bg-indigo-600 text-white rounded-2xl shadow-2xl flex items-center justify-center z-50"><${Lucide.Plus} size=${32} /></button>
+                    <button onClick=${() => { setEditingItem(null); setIsFormOpen(true); }} className="sm:hidden fixed bottom-8 right-8 w-16 h-16 bg-indigo-600 text-white rounded-2xl shadow-2xl flex items-center justify-center z-50 shadow-indigo-200 active:scale-95 transition-all"><${Lucide.Plus} size=${32} /></button>
 
                     ${(isFormOpen || editingItem) && html`<${TransactionForm} initialData=${editingItem} onSave=${handleSave} onClose=${() => { setIsFormOpen(false); setEditingItem(null); }} />`}
                 </div>
