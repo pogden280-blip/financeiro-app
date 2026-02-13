@@ -25,10 +25,10 @@
     "react-dom": "https://esm.sh/react-dom@18.3.1",
     "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
     "htm": "https://esm.sh/htm@3.1.1",
-    "@google/genai": "https://esm.sh/@google/genai@1.41.0",
     "lucide-react": "https://esm.sh/lucide-react@0.460.0?deps=react@18.3.1",
     "recharts": "https://esm.sh/recharts@2.13.0?deps=react@18.3.1",
-    "react/": "https://esm.sh/react@^19.2.4/"
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.41.0"
   }
 }
 </script>
@@ -40,9 +40,8 @@
         import React, { useState, useEffect, useMemo, useCallback } from 'react';
         import ReactDOM from 'react-dom/client';
         import htm from 'htm';
-        import { GoogleGenAI } from '@google/genai';
         import * as Lucide from 'lucide-react';
-        import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+        import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 
         const html = htm.bind(React.createElement);
 
@@ -150,8 +149,6 @@
             const [transactions, setTransactions] = useState([]);
             const [isFormOpen, setIsFormOpen] = useState(false);
             const [editing, setEditing] = useState(null);
-            const [aiMsg, setAiMsg] = useState('');
-            const [loadingAi, setLoadingAi] = useState(false);
             const [currentDate, setCurrentDate] = useState(new Date());
 
             const accent = user === 'dan' ? 'indigo' : 'rose';
@@ -186,14 +183,9 @@
                 });
             }, [transactions, currentDate]);
 
-            // ORDENAÇÃO CRONOLÓGICA RIGOROSA: Data decrescente + Timestamp decrescente
             const sortedTransactions = useMemo(() => {
                 return [...filtered].sort((a, b) => {
-                    // Primeiro critério: Dia (YYYY-MM-DD) decrescente
-                    if (b.date !== a.date) {
-                        return b.date.localeCompare(a.date);
-                    }
-                    // Segundo critério: Timestamp (createdAt) decrescente para o mesmo dia
+                    if (b.date !== a.date) return b.date.localeCompare(a.date);
                     const timeA = a.createdAt || 0;
                     const timeB = b.createdAt || 0;
                     return timeB - timeA;
@@ -218,31 +210,21 @@
                 return data;
             }, [filtered]);
 
-            const getAiAdvice = async () => {
-                if (filtered.length === 0) return;
-                setLoadingAi(true);
-                try {
-                    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-                    const context = filtered.map(t => `${t.user}: ${t.description} (R$ ${t.amount})`).join('\n');
-                    const response = await ai.models.generateContent({
-                        model: 'gemini-3-flash-preview',
-                        contents: `Analise as finanças do casal Dan e Paty do mês:\n${context}`,
-                        config: { systemInstruction: "Consultor financeiro amigo e estratégico para casais." }
-                    });
-                    setAiMsg(response.text);
-                } catch (e) { setAiMsg("Adicione mais dados!"); }
-                setLoadingAi(false);
-            };
+            const userStats = useMemo(() => {
+                return filtered.filter(t => t.type === 'expense').reduce((acc, t) => {
+                    if (t.user === 'dan') acc.dan += t.amount;
+                    else acc.paty += t.amount;
+                    return acc;
+                }, { dan: 0, paty: 0 });
+            }, [filtered]);
 
             const sendWhatsApp = () => {
                 const number = user === 'dan' ? '5577998652620' : '5577998572616';
                 const monthName = currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-                let msg = `*Extrato Dan & Paty - ${monthName}*\n💰 *Saldo:* ${formatCurrency(summary.bal)}\n📈 *Entradas:* ${formatCurrency(summary.inc)}\n📉 *Saídas:* ${formatCurrency(summary.exp)}\n\n*Lançamentos Recentes (Topo):*\n`;
-                
+                let msg = `*Extrato Dan & Paty - ${monthName}*\n💰 *Saldo:* ${formatCurrency(summary.bal)}\n📈 *Entradas:* ${formatCurrency(summary.inc)}\n📉 *Saídas:* ${formatCurrency(summary.exp)}\n\n*Lançamentos Recentes:*\n`;
                 sortedTransactions.forEach(t => { 
                     msg += `• [${parseDateLocal(t.date).day}] ${t.description}: ${formatCurrency(t.amount)}\n`; 
                 });
-                
                 window.open(`https://wa.me/${number}?text=${encodeURIComponent(msg)}`, '_blank');
             };
 
@@ -270,7 +252,7 @@
                         <div className="grid grid-cols-3 gap-3">
                             ${[['Saldo', summary.bal, Lucide.Wallet, accent], ['Entradas', summary.inc, Lucide.TrendingUp, 'emerald'], ['Saídas', summary.exp, Lucide.TrendingDown, 'rose']].map(([label, val, Icon, c]) => html`
                                 <div key=${label} className="bg-white p-4 rounded-3xl shadow-soft border border-slate-100">
-                                    <${Icon} size=${18} className=${`text-${c}-600 mb-1`} />
+                                    <${Icon} size={18} className=${`text-${c}-600 mb-1`} />
                                     <p className="text-[9px] font-black uppercase text-slate-400">${label}</p>
                                     <p className="text-xs font-black truncate">${formatCurrency(val)}</p>
                                 </div>
@@ -293,14 +275,29 @@
                                 ` : html`<div className="h-full flex items-center justify-center text-slate-300 italic">Sem gastos este mês</div>`}
                             </div>
 
-                            <div className=${`bg-gradient-to-br from-${accent}-900 to-${accent}-700 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden flex flex-col justify-center`}>
-                                <span className="bg-white/10 w-fit px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-md mb-4">Coach IA</span>
-                                ${aiMsg ? html`<p className="italic text-lg animate-fade-in leading-relaxed">"${aiMsg}"</p>` : html`
-                                    <h3 className="text-3xl font-black mb-4">Fala, ${user === 'dan' ? 'Dan' : 'Paty'}!</h3>
-                                    <button onClick=${getAiAdvice} disabled=${loadingAi || filtered.length === 0} className="bg-white text-slate-900 px-8 py-4 rounded-2xl font-black text-xs shadow-xl active:scale-95 disabled:opacity-50">
-                                        ${loadingAi ? 'ANALISANDO...' : 'CONSULTAR IA'}
-                                    </button>
-                                `}
+                            <div className="bg-white p-8 rounded-[2.5rem] shadow-soft border border-slate-100 flex flex-col justify-center gap-6 h-[350px]">
+                                <h3 className="text-sm font-black uppercase text-slate-400">Divisão de Gastos</h3>
+                                <div className="space-y-4">
+                                    <div>
+                                        <div className="flex justify-between mb-2">
+                                            <span className="text-xs font-black text-indigo-600 uppercase">Dan</span>
+                                            <span className="text-xs font-black text-slate-600">${formatCurrency(userStats.dan)}</span>
+                                        </div>
+                                        <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden">
+                                            <div className="bg-indigo-500 h-full transition-all duration-1000" style=${{ width: `${(userStats.dan / (summary.exp || 1)) * 100}%` }}></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="flex justify-between mb-2">
+                                            <span className="text-xs font-black text-rose-600 uppercase">Paty</span>
+                                            <span className="text-xs font-black text-slate-600">${formatCurrency(userStats.paty)}</span>
+                                        </div>
+                                        <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden">
+                                            <div className="bg-rose-500 h-full transition-all duration-1000" style=${{ width: `${(userStats.paty / (summary.exp || 1)) * 100}%` }}></div>
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 italic text-center mt-4">Calculado com base nas despesas do mês atual.</p>
+                                </div>
                             </div>
                         </div>
 
