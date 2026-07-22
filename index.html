@@ -264,12 +264,21 @@
                 return data;
             }, [filtered]);
 
-            const userStats = useMemo(() => {
-                return filtered.filter(t => t.type === 'expense').reduce((acc, t) => {
-                    if (t.user === 'dan') acc.dan += t.amount;
-                    else acc.paty += t.amount;
+            const userTotals = useMemo(() => {
+                return filtered.reduce((acc, t) => {
+                    const u = t.user === 'dan' ? 'dan' : 'paty';
+                    if (t.type === 'income') {
+                        acc[u].inc += t.amount;
+                        acc[u].bal += t.amount;
+                    } else {
+                        acc[u].exp += t.amount;
+                        acc[u].bal -= t.amount;
+                    }
                     return acc;
-                }, { dan: 0, paty: 0 });
+                }, { 
+                    dan: { inc: 0, exp: 0, bal: 0 }, 
+                    paty: { inc: 0, exp: 0, bal: 0 } 
+                });
             }, [filtered]);
 
             const sendWhatsApp = () => {
@@ -352,29 +361,67 @@
                                 ` : html`<div className="h-full flex items-center justify-center text-slate-300 italic">Sem gastos este mês</div>`}
                             </div>
 
-                            <div className="bg-white p-8 rounded-[2.5rem] shadow-soft border border-slate-100 flex flex-col justify-center gap-6 h-[350px]">
-                                <h3 className="text-sm font-black uppercase text-slate-400">Divisão de Gastos</h3>
-                                <div className="space-y-4">
-                                    <div>
-                                        <div className="flex justify-between mb-2">
-                                            <span className="text-xs font-black text-indigo-600 uppercase">Dan</span>
-                                            <span className="text-xs font-black text-slate-600">${formatCurrency(userStats.dan)}</span>
-                                        </div>
-                                        <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden">
-                                            <div className="bg-indigo-500 h-full transition-all duration-1000" style=${{ width: `${(userStats.dan / (summary.exp || 1)) * 100}%` }}></div>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div className="flex justify-between mb-2">
-                                            <span className="text-xs font-black text-rose-600 uppercase">Paty</span>
-                                            <span className="text-xs font-black text-slate-600">${formatCurrency(userStats.paty)}</span>
-                                        </div>
-                                        <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden">
-                                            <div className="bg-rose-500 h-full transition-all duration-1000" style=${{ width: `${(userStats.paty / (summary.exp || 1)) * 100}%` }}></div>
-                                        </div>
-                                    </div>
-                                    <p className="text-[10px] text-slate-400 italic text-center mt-4">Calculado com base nas despesas do mês atual.</p>
+                            <div className="bg-white p-6 rounded-[2.5rem] shadow-soft border border-slate-100 flex flex-col justify-between h-[350px]">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-black uppercase text-slate-400">Divisão de Finanças</h3>
+                                    <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-500 rounded-lg">Mês Atual</span>
                                 </div>
+                                <div className="grid grid-cols-2 gap-3 sm:gap-4 my-auto">
+                                    {/* Card Dan */}
+                                    <div className="bg-indigo-50/60 border border-indigo-100 p-3.5 sm:p-4 rounded-2xl flex flex-col justify-between">
+                                        <div className="flex items-center justify-between border-b border-indigo-100/80 pb-2 mb-2">
+                                            <span className="text-xs sm:text-sm font-black text-indigo-700 uppercase tracking-wide flex items-center gap-1.5">
+                                                <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
+                                                Dan
+                                            </span>
+                                            <span className=${`text-xs font-black ${userTotals.dan.bal >= 0 ? 'text-indigo-950' : 'text-rose-600'}`}>
+                                                ${formatCurrency(userTotals.dan.bal)}
+                                            </span>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center text-xs">
+                                                <span className="text-slate-500 font-bold flex items-center gap-1">
+                                                    <${Lucide.TrendingUp} size=${13} className="text-emerald-500 flex-shrink-0" /> Entradas
+                                                </span>
+                                                <span className="font-black text-emerald-600 truncate ml-1">${formatCurrency(userTotals.dan.inc)}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-xs">
+                                                <span className="text-slate-500 font-bold flex items-center gap-1">
+                                                    <${Lucide.TrendingDown} size=${13} className="text-rose-500 flex-shrink-0" /> Saídas
+                                                </span>
+                                                <span className="font-black text-rose-600 truncate ml-1">${formatCurrency(userTotals.dan.exp)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Card Paty */}
+                                    <div className="bg-rose-50/60 border border-rose-100 p-3.5 sm:p-4 rounded-2xl flex flex-col justify-between">
+                                        <div className="flex items-center justify-between border-b border-rose-100/80 pb-2 mb-2">
+                                            <span className="text-xs sm:text-sm font-black text-rose-700 uppercase tracking-wide flex items-center gap-1.5">
+                                                <span className="w-2.5 h-2.5 rounded-full bg-rose-600"></span>
+                                                Paty
+                                            </span>
+                                            <span className=${`text-xs font-black ${userTotals.paty.bal >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
+                                                ${formatCurrency(userTotals.paty.bal)}
+                                            </span>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center text-xs">
+                                                <span className="text-slate-500 font-bold flex items-center gap-1">
+                                                    <${Lucide.TrendingUp} size=${13} className="text-emerald-500 flex-shrink-0" /> Entradas
+                                                </span>
+                                                <span className="font-black text-emerald-600 truncate ml-1">${formatCurrency(userTotals.paty.inc)}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-xs">
+                                                <span className="text-slate-500 font-bold flex items-center gap-1">
+                                                    <${Lucide.TrendingDown} size=${13} className="text-rose-500 flex-shrink-0" /> Saídas
+                                                </span>
+                                                <span className="font-black text-rose-600 truncate ml-1">${formatCurrency(userTotals.paty.exp)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p className="text-[10px] text-slate-400 italic text-center">Totais de entradas e saídas de cada um no mês selecionado.</p>
                             </div>
                         </div>
 
