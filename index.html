@@ -52,8 +52,8 @@
         const API_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
 
         const CATEGORIES = {
-            income: ['Salário', 'Investimentos', 'Venda', 'Outros'],
-            expense: ['Alimentação', 'Transporte', 'Moradia', 'Lazer', 'Saúde', 'Educação', 'Mimos', 'Outros']
+            income: ['Salário', 'Investimentos', 'Venda', 'Reserva', 'Outros'],
+            expense: ['Alimentação', 'Transporte', 'Moradia', 'Lazer', 'Saúde', 'Educação', 'Mimos', 'Reserva', 'Outros']
         };
 
         const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
@@ -104,6 +104,7 @@
             const [type, setType] = useState(initialData?.type || 'expense');
             const [cat, setCat] = useState(initialData?.category || CATEGORIES.expense[0]);
             const [date, setDate] = useState(initialData?.date || new Date().toISOString().split('T')[0]);
+            const [isReserve, setIsReserve] = useState(initialData?.isReserve || initialData?.category === 'Reserva' || false);
             const accent = currentUser === 'dan' ? 'indigo' : 'rose';
 
             return html`
@@ -120,26 +121,44 @@
                                 description: desc, 
                                 amount: parseFloat(val), 
                                 type, 
-                                category: cat, 
+                                category: isReserve ? 'Reserva' : cat, 
+                                isReserve: isReserve,
                                 date, 
                                 user: initialData?.user || currentUser,
                                 createdAt: initialData?.createdAt || Date.now()
                             }); 
                             onClose(); 
-                        }} className="p-8 space-y-6">
+                        }} className="p-6 space-y-4">
                             <div className="flex p-1 bg-slate-100 rounded-2xl">
-                                <button type="button" onClick=${() => { setType('income'); setCat(CATEGORIES.income[0]); }} className=${`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-wider ${type === 'income' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>Receita</button>
-                                <button type="button" onClick=${() => { setType('expense'); setCat(CATEGORIES.expense[0]); }} className=${`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-wider ${type === 'expense' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-400'}`}>Despesa</button>
+                                <button type="button" onClick=${() => { setType('income'); if(!isReserve) setCat(CATEGORIES.income[0]); }} className=${`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-wider ${type === 'income' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>Receita</button>
+                                <button type="button" onClick=${() => { setType('expense'); if(!isReserve) setCat(CATEGORIES.expense[0]); }} className=${`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-wider ${type === 'expense' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-400'}`}>Despesa</button>
                             </div>
-                            <input required value=${desc} onChange=${e => setDesc(e.target.value)} className="w-full px-4 py-4 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Descrição" />
-                            <div className="grid grid-cols-2 gap-4">
-                                <input type="number" step="0.01" required value=${val} onChange=${e => setVal(e.target.value)} className="w-full px-4 py-4 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 font-bold" placeholder="Valor R$" />
-                                <input type="date" required value=${date} onChange=${e => setDate(e.target.value)} className="w-full px-4 py-4 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500" />
+                            <input required value=${desc} onChange=${e => setDesc(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 text-base" placeholder="Descrição" />
+                            <div className="grid grid-cols-2 gap-3">
+                                <input type="number" step="0.01" required value=${val} onChange=${e => setVal(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-base" placeholder="Valor R$" />
+                                <input type="date" required value=${date} onChange=${e => setDate(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 text-base" />
                             </div>
-                            <select value=${cat} onChange=${e => setCat(e.target.value)} className="w-full px-4 py-4 rounded-xl border border-slate-200 bg-white">
+                            <select disabled=${isReserve} value=${isReserve ? 'Reserva' : cat} onChange=${e => setCat(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white disabled:bg-slate-100 disabled:text-slate-500 text-base">
                                 ${(type === 'income' ? CATEGORIES.income : CATEGORIES.expense).map(c => html`<option key=${c} value=${c}>${c}</option>`)}
                             </select>
-                            <button className=${`w-full py-5 bg-${accent}-600 text-white rounded-2xl font-black shadow-xl active:scale-95 transition-all`}>CONCLUIR</button>
+
+                            <label className=${`flex items-center gap-3 p-3.5 rounded-2xl border transition-all cursor-pointer ${isReserve ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
+                                <input type="checkbox" checked=${isReserve} onChange=${e => {
+                                    const val = e.target.checked;
+                                    setIsReserve(val);
+                                    if (val) setCat('Reserva');
+                                    else setCat(type === 'income' ? CATEGORIES.income[0] : CATEGORIES.expense[0]);
+                                }} className="w-5 h-5 accent-amber-600 rounded cursor-pointer flex-shrink-0" />
+                                <div className="flex flex-col">
+                                    <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                                        <${Lucide.PiggyBank} size=${16} className="text-amber-600 flex-shrink-0" />
+                                        Destinar para Reserva (Caixinha)
+                                    </span>
+                                    <span className="text-[10px] text-slate-500 font-medium">Fundo fixo separado. Não se mistura com entradas e saídas.</span>
+                                </div>
+                            </label>
+
+                            <button className=${`w-full py-4 bg-${accent}-600 text-white rounded-2xl font-black shadow-xl active:scale-95 transition-all text-xs uppercase tracking-wider`}>CONCLUIR</button>
                         </form>
                     </div>
                 </div>
@@ -247,15 +266,22 @@
             }, [filtered]);
 
             const summary = useMemo(() => {
-                return filtered.reduce((acc, t) => {
+                const normal = filtered.filter(t => !t.isReserve && t.category !== 'Reserva').reduce((acc, t) => {
                     if (t.type === 'income') { acc.inc += t.amount; acc.bal += t.amount; }
                     else { acc.exp += t.amount; acc.bal -= t.amount; }
                     return acc;
                 }, { bal: 0, inc: 0, exp: 0 });
-            }, [filtered]);
+
+                const res = transactions.filter(t => t.isReserve || t.category === 'Reserva').reduce((acc, t) => {
+                    if (t.type === 'income') return acc + t.amount;
+                    else return acc - t.amount;
+                }, 0);
+
+                return { ...normal, res };
+            }, [filtered, transactions]);
 
             const chartData = useMemo(() => {
-                const data = filtered.filter(t => t.type === 'expense').reduce((acc, t) => {
+                const data = filtered.filter(t => t.type === 'expense' && !t.isReserve && t.category !== 'Reserva').reduce((acc, t) => {
                     const existing = acc.find(x => x.name === t.category);
                     if (existing) existing.value += t.amount;
                     else acc.push({ name: t.category, value: t.amount });
@@ -265,7 +291,7 @@
             }, [filtered]);
 
             const userTotals = useMemo(() => {
-                return filtered.reduce((acc, t) => {
+                return filtered.filter(t => !t.isReserve && t.category !== 'Reserva').reduce((acc, t) => {
                     const u = t.user === 'dan' ? 'dan' : 'paty';
                     if (t.type === 'income') {
                         acc[u].inc += t.amount;
@@ -284,9 +310,9 @@
             const sendWhatsApp = () => {
                 const number = user === 'dan' ? '5577998652620' : '5577998572616';
                 const monthName = currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-                let msg = `*Extrato Dan & Paty - ${monthName}*\n💰 *Saldo:* ${formatCurrency(summary.bal)}\n📈 *Entradas:* ${formatCurrency(summary.inc)}\n📉 *Saídas:* ${formatCurrency(summary.exp)}\n\n*Lançamentos Recentes:*\n`;
+                let msg = `*Extrato Dan & Paty - ${monthName}*\n💰 *Saldo:* ${formatCurrency(summary.bal)}\n📈 *Entradas:* ${formatCurrency(summary.inc)}\n📉 *Saídas:* ${formatCurrency(summary.exp)}\n🐷 *Reserva:* ${formatCurrency(summary.res)}\n\n*Lançamentos Recentes:*\n`;
                 sortedTransactions.forEach(t => { 
-                    msg += `• [${parseDateLocal(t.date).day}] ${t.description}: ${formatCurrency(t.amount)}\n`; 
+                    msg += `• [${parseDateLocal(t.date).day}] ${t.description}: ${formatCurrency(t.amount)}${t.isReserve || t.category === 'Reserva' ? ' (Reserva)' : ''}\n`; 
                 });
                 window.open(`https://wa.me/${number}?text=${encodeURIComponent(msg)}`, '_blank');
             };
@@ -329,16 +355,21 @@
                             <button onClick=${() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth()+1))} className=${`${accentText} p-1 hover:bg-slate-100 rounded-lg transition-colors`}><${Lucide.ChevronRight} size=${22} /></button>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-2 sm:gap-4">
-                            ${[['Saldo', summary.bal, Lucide.Wallet, accent], ['Entradas', summary.inc, Lucide.TrendingUp, 'emerald'], ['Saídas', summary.exp, Lucide.TrendingDown, 'rose']].map(([label, val, Icon, c]) => html`
-                                <div key=${label} className="bg-white p-2.5 sm:p-4 rounded-2xl shadow-soft border border-slate-100 flex flex-col justify-between">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                            ${[
+                                ['Saldo', summary.bal, Lucide.Wallet, accent, summary.bal >= 0 ? 'text-slate-800' : 'text-rose-600'],
+                                ['Entradas', summary.inc, Lucide.TrendingUp, 'emerald', 'text-emerald-600'],
+                                ['Saídas', summary.exp, Lucide.TrendingDown, 'rose', 'text-rose-600'],
+                                ['Reserva', summary.res, Lucide.PiggyBank, 'amber', 'text-amber-600']
+                            ].map(([label, val, Icon, c, textCls]) => html`
+                                <div key=${label} className="bg-white p-2.5 sm:p-3.5 rounded-2xl shadow-soft border border-slate-100 flex flex-col justify-between">
                                     <div className="flex items-center gap-1 mb-1">
                                         <div className=${`p-1 rounded-md bg-${c}-50 text-${c}-600 flex-shrink-0`}>
                                             <${Icon} size=${12} />
                                         </div>
                                         <span className="text-[10px] sm:text-xs font-bold uppercase text-slate-400 truncate">${label}</span>
                                     </div>
-                                    <p className=${`text-xs sm:text-sm md:text-base font-black tracking-tight leading-snug whitespace-nowrap overflow-x-auto scrollbar-none ${label === 'Saídas' ? 'text-rose-600' : label === 'Entradas' ? 'text-emerald-600' : 'text-slate-800'}`}>
+                                    <p className=${`text-xs sm:text-sm font-black tracking-tight leading-snug whitespace-nowrap overflow-x-auto scrollbar-none ${textCls}`}>
                                         ${formatCurrency(val)}
                                     </p>
                                 </div>
@@ -442,7 +473,10 @@
                                         </div>
                                         <div className="flex-1 truncate">
                                             <p className="font-bold text-sm truncate">${t.description}</p>
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">${t.category} • ${t.user}</p>
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5 mt-0.5">
+                                                ${(t.isReserve || t.category === 'Reserva') && html`<span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded font-black text-[9px] flex items-center gap-1"><${Lucide.PiggyBank} size=${10} /> Reserva</span>`}
+                                                <span>${t.category} • ${t.user}</span>
+                                            </p>
                                         </div>
                                         <div className="text-right">
                                             <p className=${`font-black text-sm ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>${formatCurrency(t.amount)}</p>
